@@ -296,6 +296,62 @@ def dns_delete(
     )
 
 
+@app.post("/dns/create-confirm", response_class=HTMLResponse)
+def dns_create_confirm(
+    request: Request,
+    fqdn: str = Form(...),
+    name: str = Form(""),
+    backend: str = Form(""),
+    host: str = Form(""),
+    insecure: bool = Form(False),
+    middlewares: str = Form(""),
+    force: bool = Form(False),
+):
+    return templates.TemplateResponse(
+        request,
+        "dns_create.html",
+        {
+            "settings": settings,
+            "fqdn": fqdn,
+            "spec_fields": _spec_fields(name, backend, host, insecure, middlewares, force),
+        },
+    )
+
+
+@app.post("/dns/create", response_class=HTMLResponse)
+def dns_create(
+    request: Request,
+    fqdn: str = Form(...),
+    name: str = Form(""),
+    backend: str = Form(""),
+    host: str = Form(""),
+    insecure: bool = Form(False),
+    middlewares: str = Form(""),
+    force: bool = Form(False),
+):
+    try:
+        outcome = operations.create_zone_record(fqdn, settings)
+    except operations.OperationError as e:
+        log.error("zone create %s failed: %s", fqdn, e)
+        return templates.TemplateResponse(
+            request,
+            "result.html",
+            {"settings": settings, "ok": False, "title": "Record not created",
+             "message": str(e), "post": None, "name": None},
+        )
+    return templates.TemplateResponse(
+        request,
+        "dns_created.html",
+        {
+            "settings": settings,
+            "outcome": outcome,
+            "spec_fields": _spec_fields(name, backend, host, insecure, middlewares, force)
+            if name
+            else None,
+        },
+    )
+
+
 @app.get("/health")
 def health():
     return {"ok": True}

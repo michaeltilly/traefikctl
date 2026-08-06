@@ -8,6 +8,7 @@ import typer
 from .config import get_settings
 from .core import operations
 from .core.generator import GeneratorError, ServiceSpec
+from .core.technitium import ZoneKind
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s"
@@ -63,22 +64,42 @@ def add(
         _print_check(c)
 
     if fix_dns and pf.zone and pf.zone.blocks:
-        for rec in pf.zone.records:
-            typer.echo(f"\nConflicting record: {rec.label}")
+        if pf.zone.records:
+            for rec in pf.zone.records:
+                typer.echo(f"\nConflicting record: {rec.label}")
+                if not yes:
+                    typer.confirm("Delete this record in Technitium?", abort=True)
+                try:
+                    outcome = operations.delete_zone_record(
+                        rec.name, rec.type, rec.value, rec.disabled, settings
+                    )
+                except operations.OperationError as e:
+                    typer.secho(str(e), fg=typer.colors.RED, err=True)
+                    raise typer.Exit(1)
+                typer.echo(f"{OK} {outcome.message}")
+            typer.echo("Re-running pre-flight:")
+            pf = operations.run_preflight(spec, settings)
+            for c in pf.checks:
+                _print_check(c)
+        if pf.zone and pf.zone.kind == ZoneKind.MISSING_RECORD:
+            typer.echo(
+                f"\nMissing record: {spec.fqdn(settings)} A → "
+                f"{settings.ingress_ip} (this ingress — not configurable)"
+            )
             if not yes:
-                typer.confirm("Delete this record in Technitium?", abort=True)
+                typer.confirm("Create this record in Technitium?", abort=True)
             try:
-                outcome = operations.delete_zone_record(
-                    rec.name, rec.type, rec.value, rec.disabled, settings
+                created = operations.create_zone_record(
+                    spec.fqdn(settings), settings
                 )
             except operations.OperationError as e:
                 typer.secho(str(e), fg=typer.colors.RED, err=True)
                 raise typer.Exit(1)
-            typer.echo(f"{OK} {outcome.message}")
-        typer.echo("Re-running pre-flight:")
-        pf = operations.run_preflight(spec, settings)
-        for c in pf.checks:
-            _print_check(c)
+            typer.echo(f"{OK} {created.message}")
+            typer.echo("Re-running pre-flight:")
+            pf = operations.run_preflight(spec, settings)
+            for c in pf.checks:
+                _print_check(c)
 
     try:
         path = operations.add_service(spec, settings, force=force)

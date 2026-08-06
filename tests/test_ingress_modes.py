@@ -392,3 +392,76 @@ def test_delete_outcome_wildcard_message_unchanged(wildcard, monkeypatch):
         f"app.{ZONE}", "A", "10.10.10.99", True, wildcard
     )
     assert "The wildcard now covers the name" in out.message
+
+
+# ---- guided record creation (explicit mode only) ----
+
+def _create_capture(monkeypatch, existing_records):
+    created = []
+    def fake_call(self, endpoint, **params):
+        if "records/add" in endpoint:
+            created.append(params)
+            return {}
+        assert "records/get" in endpoint
+        return {"records": existing_records}
+    monkeypatch.setattr(TechnitiumClient, "_call", fake_call)
+    return created
+
+
+def test_create_zone_record_success(explicit, monkeypatch):
+    created = _create_capture(monkeypatch, [])
+    out = operations.create_zone_record(f"app.{ZONE}", explicit)
+    assert created and created[0]["ipAddress"] == MGMT_INGRESS
+    assert created[0]["type"] == "A" and created[0]["domain"] == f"app.{ZONE}"
+    assert out.ip == MGMT_INGRESS and f"app.{ZONE} A → {MGMT_INGRESS}" in out.message
+
+
+def test_create_zone_record_refused_in_wildcard_mode(wildcard, monkeypatch):
+    created = _create_capture(monkeypatch, [])
+    with pytest.raises(operations.OperationError, match="explicit-record mode"):
+        operations.create_zone_record(f"app.{ZONE}", wildcard)
+    assert not created
+
+
+def test_create_zone_record_refuses_when_record_exists(explicit, monkeypatch):
+    created = _create_capture(
+        monkeypatch, [_record(f"app.{ZONE}", value="10.10.10.50")]
+    )
+    with pytest.raises(operations.OperationError, match="not a missing record"):
+        operations.create_zone_record(f"app.{ZONE}", explicit)
+    assert not created
+
+
+def test_create_zone_record_refuses_when_api_down(explicit, monkeypatch):
+    def boom(self, endpoint, **params):
+        raise httpx.ConnectError("down")
+    monkeypatch.setattr(TechnitiumClient, "_call", boom)
+    with pytest.raises(operations.OperationError, match="could not verify"):
+        operations.create_zone_record(f"app.{ZONE}", explicit)
+
+
+@pytest.mark.parametrize("fqdn", [
+    ZONE,                      # apex
+    f"*.{ZONE}",               # wildcard
+    f"dns1.{ZONE}",            # the DNS server
+    "evil.example.com",        # outside the zone
+])
+def test_create_denylist(explicit, fqdn, monkeypatch):
+    created = _create_capture(monkeypatch, [])
+    with pytest.raises(operations.OperationError, match="refus"):
+        operations.create_zone_record(fqdn, explicit)
+    assert not created
+
+
+def test_create_zone_record_api_error_surfaced(explicit, monkeypatch):
+    from traefikctl.core.technitium import TechnitiumError
+    calls = []
+    def fake_call(self, endpoint, **params):
+        if "records/add" in endpoint:
+            calls.append(1)
+            raise TechnitiumError("Access was denied.")
+        return {"records": []}
+    monkeypatch.setattr(TechnitiumClient, "_call", fake_call)
+    with pytest.raises(operations.OperationError, match="Access was denied"):
+        operations.create_zone_record(f"app.{ZONE}", explicit)
+    assert len(calls) == 1  # surfaced, not retried

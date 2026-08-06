@@ -292,6 +292,51 @@ def delete_zone_record(
 
 
 @dataclass
+class CreateOutcome:
+    fqdn: str
+    ip: str
+    message: str
+
+
+def create_zone_record(fqdn: str, settings: Settings) -> CreateOutcome:
+    """The guided create: in explicit mode only, create the missing A record
+    fqdn -> this ingress IP after the caller's explicit confirmation.
+    Re-classifies first so we only ever create when the verdict is still
+    MISSING_RECORD — never over an existing record of any kind."""
+    if settings.wildcard_covers_ingress:
+        raise OperationError(
+            "record creation is only available in explicit-record mode — on "
+            "this ingress the wildcard already covers published names"
+        )
+    client = TechnitiumClient(settings)
+    if not client.enabled:
+        raise OperationError("Technitium integration is not configured")
+    verdict = technitium.classify(fqdn, settings)
+    if verdict.kind == ZoneKind.UNAVAILABLE:
+        raise OperationError(
+            f"could not verify the zone before creating: {verdict.detail}"
+        )
+    if verdict.kind != ZoneKind.MISSING_RECORD:
+        raise OperationError(
+            f"not creating: the zone state for {fqdn} is "
+            f"{verdict.kind.value!r}, not a missing record — re-run pre-flight."
+        )
+    try:
+        client.create_a_record(fqdn)
+    except TechnitiumError as e:
+        raise OperationError(f"Technitium refused the create: {e}")
+    return CreateOutcome(
+        fqdn=fqdn,
+        ip=settings.ingress_ip,
+        message=(
+            f"Created {fqdn} A → {settings.ingress_ip}. The authoritative "
+            "server answers immediately; resolvers that already cached the "
+            "wildcard answer may serve it until their TTL expires."
+        ),
+    )
+
+
+@dataclass
 class ZonePanelRow:
     record: ZoneRecord
     # wildcard | direct-access | ingress-aliased | other-ingress | disabled | infra

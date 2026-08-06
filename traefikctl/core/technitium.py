@@ -1,8 +1,10 @@
 """Thin client for the Technitium DNS HTTP API, plus zone-aware
 classification of names traefikctl wants to publish.
 
-Read-only except for delete_record(), which is the single permitted write
-operation (guided conflict resolution) and enforces a hard denylist.
+Read-only except for two guided write operations: delete_record()
+(conflict resolution, hard denylist) and create_a_record() (explicit-mode
+missing records only — always NAME -> this ingress IP, never an arbitrary
+target).
 API shapes verified empirically against Technitium on 10.10.30.30
 (2026-08-06): GET /api/zones/records/{get,delete}, token as query param,
 {"status": "ok", "response": {...}} envelopes, disabled records included
@@ -210,6 +212,42 @@ class TechnitiumClient:
             **{value_param: record.value},
         )
         log.info("DELETED Technitium record: %s", record.label)
+
+    def creation_refusal(self, fqdn: str) -> str | None:
+        """Why an A record must never be created at this name, or None."""
+        zone = self.settings.technitium_zone.lower()
+        name = fqdn.lower().rstrip(".")
+        if name == zone:
+            return "the zone apex is protected"
+        if name.startswith("*."):
+            return "wildcard records are managed in the Technitium console"
+        if name == f"dns1.{zone}":
+            return "dns1 is the DNS server itself"
+        if not name.endswith(f".{zone}"):
+            return f"{fqdn!r} is outside the zone {zone!r}"
+        return None
+
+    def create_a_record(self, fqdn: str, ttl: int = 3600) -> None:
+        """The second write operation: create fqdn A -> THIS ingress IP.
+        The target is never caller-supplied — publishing on this ingress is
+        the only thing the tool can point a name at."""
+        reason = self.creation_refusal(fqdn)
+        if reason:
+            raise TechnitiumError(
+                f"refusing to create {fqdn} A record: {reason}"
+            )
+        self._call(
+            "zones/records/add",
+            domain=fqdn,
+            zone=self.settings.technitium_zone,
+            type="A",
+            ipAddress=self.settings.ingress_ip,
+            ttl=ttl,
+        )
+        log.info(
+            "CREATED Technitium record: %s A → %s (ttl %s)",
+            fqdn, self.settings.ingress_ip, ttl,
+        )
 
 
 def classify(fqdn: str, settings: Settings) -> ZoneVerdict:

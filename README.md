@@ -100,9 +100,10 @@ zone wildcard relates to the instance, controlled by
 - **Explicit mode** (`false` — ingress02, 10.10.10.4, the management
   ingress): the wildcard points at the *other* ingress, so every published
   name **requires** a specific A record → this ingress IP. Pre-flight
-  verdicts invert accordingly: no record now **blocks** with guidance to
-  create `NAME → <ingress IP>` in Technitium (the tool never creates
-  records); an explicit record → this ingress is the required pass state;
+  verdicts invert accordingly: no record now **blocks**, with a guided
+  create offered (web pre-flight panel or `add ... --fix-dns` in the CLI)
+  that makes the required record `NAME → <ingress IP>` after explicit
+  confirmation; an explicit record → this ingress is the required pass state;
   a record pointing elsewhere blocks, with the message distinguishing
   "points at the other ingress (wildcard target)" from "points at a
   device". The guided delete flow and its denylist are identical in both
@@ -167,8 +168,14 @@ resolution check.
   published service
 
 **Integration guardrails:**
-- Records are never created or modified — the confirmed delete is the single
-  write operation in the entire integration
+- Exactly two write operations, both behind an explicit confirmation:
+  the guided **delete** (conflict resolution, both modes) and the guided
+  **create** (explicit mode only, offered when pre-flight reports a missing
+  record). The create is deliberately narrow: always `NAME → <this ingress
+  IP>`, TTL 3600 — the target is not caller-supplied, so the tool can only
+  ever point a name at itself. Creation is refused for the apex, wildcards,
+  `dns1`, names outside the zone, any name that already has records, and
+  everywhere in wildcard mode. Records are never modified
 - Hard denylist: the wildcard, the zone apex, `dns1`, and all SOA/NS records
   can never be deleted, and record types the tool doesn't understand are
   refused with a pointer to the Technitium console

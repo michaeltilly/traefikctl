@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}confirm create{% endblock %}
+{% block content %}
+<div class="pagehead"><h1>Create DNS record</h1></div>
+
+<div class="confirm-delete" style="max-width:44rem">
+  <p style="margin-top:0">This creates one A record in the authoritative zone
+  <code>{{ settings.technitium_zone }}</code>. On this ingress every published name needs its own
+  record — the wildcard points at the other ingress. The target is fixed: traefikctl only ever
+  points a name at this ingress.</p>
+  <table class="kvtable" style="margin:.6rem 0 .8rem">
+    <tr><th>name</th><td><code>{{ fqdn }}</code></td></tr>
+    <tr><th>type</th><td><code>A</code></td></tr>
+    <tr><th>value</th><td><code>{{ settings.ingress_ip }}</code> <span class="muted">(this ingress — not configurable)</span></td></tr>
+    <tr><th>TTL</th><td><code>3600</code></td></tr>
+  </table>
+  <p class="muted">Resolvers that already cached the wildcard answer may serve it until their TTL expires.</p>
+  <form method="post" action="/dns/create">
+    <input type="hidden" name="fqdn" value="{{ fqdn }}">
+    {% for k, v in spec_fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v if v is not sameas false else '' }}">{% endfor %}
+    <div class="actions">
+      <button type="submit">Create record</button>
+      <a href="/add">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

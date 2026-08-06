@@ -70,6 +70,19 @@
       </form>
       {% endfor %}
       {% endif %}
+      {% if c.level == 'block' and pf.zone and pf.zone.kind.value == 'missing-record' and 'no A record' in c.summary %}
+      <form method="post" action="/dns/create-confirm" class="ledger-fix">
+        <code>{{ spec.fqdn(settings) }} A → {{ settings.ingress_ip }}</code>
+        <input type="hidden" name="fqdn" value="{{ spec.fqdn(settings) }}">
+        <input type="hidden" name="name" value="{{ spec.name }}">
+        <input type="hidden" name="backend" value="{{ spec.backend }}">
+        <input type="hidden" name="host" value="{{ spec.host or '' }}">
+        {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
+        <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
+        {% if force %}<input type="hidden" name="force" value="true">{% endif %}
+        <button type="submit">Create record in Technitium…</button>
+      </form>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
