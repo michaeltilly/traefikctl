@@ -1,0 +1,17 @@
+http:
+  routers:
+    {{ name }}:
+      rule: "Host(`{{ host }}`)"
+      entryPoints:
+        - {{ entrypoint }}
+      tls:
+        certResolver: {{ cert_resolver }}
+{% if middlewares %}      middlewares:
+{% for mw in middlewares %}        - {{ mw }}
+{% endfor %}{% endif %}      service: {{ name }}
+  services:
+    {{ name }}:
+      loadBalancer:
+{% if insecure %}        serversTransport: {{ insecure_transport }}
+{% endif %}        servers:
+          - url: "{{ backend }}"

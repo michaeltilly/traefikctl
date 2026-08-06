@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ h.entry.name }}{% endblock %}
+{% block content %}
+<div class="card">
+<h2>{{ h.entry.name }}</h2>
+<table>
+<tr><th>host</th><td>{% if h.entry.host %}<a href="https://{{ h.entry.host }}">{{ h.entry.host }}</a>{% else %}<span class="muted">{{ h.entry.rule }}</span>{% endif %}</td></tr>
+<tr><th>backend</th><td>{% for b in h.entry.backends %}<code>{{ b }}</code> {% else %}—{% endfor %}</td></tr>
+<tr><th>insecure transport</th><td>{{ h.entry.insecure_transport or "no" }}</td></tr>
+<tr><th>middlewares</th><td>{{ h.entry.middlewares|join(", ") if h.entry.middlewares else "—" }}</td></tr>
+<tr><th>file</th><td><code>{{ h.entry.file }}</code></td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Health check</h3>
+<ul class="checks">
+{% if h.dns %}<li class="{{ h.dns.level }}">DNS: {{ h.dns.summary }}{% if h.dns.detail %}<br><span class="muted">{{ h.dns.detail }}</span>{% endif %}</li>{% endif %}
+{% for t in h.tcp %}<li class="{{ t.level }}">TCP: {{ t.summary }}</li>{% endfor %}
+{% if h.https %}
+<li class="{{ 'ok' if h.https.ok else 'bad' }}">HTTPS: {{ h.https.summary }}</li>
+{% if h.https.cert_issuer %}<li class="muted">cert issuer: {{ h.https.cert_issuer }}<br>cert subject: {{ h.https.cert_subject }}</li>{% endif %}
+{% if h.https.hints %}<li class="warn">Likely causes:<ul>{% for hint in h.https.hints %}<li>{{ hint }}</li>{% endfor %}</ul></li>{% endif %}
+{% endif %}
+</ul>
+<form method="get" action="/service/{{ h.entry.name }}"><button type="submit">Re-run checks</button></form>
+</div>
+
+<div class="card">
+<h3>Remove</h3>
+{% if removable %}
+<form method="post" action="/remove/{{ h.entry.name }}">
+  <label for="confirm">Type <code>{{ h.entry.name }}</code> to confirm deletion of <code>{{ h.entry.file.name }}</code>:</label>
+  <input type="text" id="confirm" name="confirm" autocomplete="off">
+  <button type="submit" class="danger">Remove service</button>
+</form>
+{% else %}
+<p class="muted">This router lives in <code>{{ h.entry.file.name }}</code>, which traefikctl
+did not create — edit that file manually.</p>
+{% endif %}
+</div>
+{% endblock %}

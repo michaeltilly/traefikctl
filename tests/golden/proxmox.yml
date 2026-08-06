@@ -1,0 +1,17 @@
+http:
+  routers:
+    proxmox:
+      rule: "Host(`proxmox.shire.tillynet.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - authentik-forward-auth
+      service: proxmox
+  services:
+    proxmox:
+      loadBalancer:
+        serversTransport: insecure-backend
+        servers:
+          - url: "https://10.10.10.40:8006"

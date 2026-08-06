@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}add{% endblock %}
+{% block content %}
+<div class="card">
+<h2>Add a service</h2>
+<form method="post" action="/add/preflight">
+  <label for="name">Name</label>
+  <input type="text" id="name" name="name" required placeholder="jellyfin"
+         value="{{ spec.name if spec else '' }}">
+  <p class="muted">Becomes <code>NAME.{{ settings.domain_suffix }}</code> and <code>NAME.yml</code>.</p>
+
+  <label for="backend">Backend URL</label>
+  <input type="text" id="backend" name="backend" required placeholder="http://10.10.30.5:8096"
+         value="{{ spec.backend if spec else '' }}">
+
+  <label for="host">Hostname override <span class="muted">(optional)</span></label>
+  <input type="text" id="host" name="host" placeholder="custom.{{ settings.domain_suffix }}"
+         value="{{ (spec.host or '') if spec else '' }}">
+
+  <label for="middlewares">Middlewares <span class="muted">(comma-separated, optional)</span></label>
+  <input type="text" id="middlewares" name="middlewares" placeholder="authentik-forward-auth"
+         value="{{ middlewares_raw or '' }}">
+
+  <label class="checkline"><input type="checkbox" name="insecure" value="true"
+         {{ 'checked' if spec and spec.insecure }}>
+    HTTPS backend with self-signed cert (use <code>{{ settings.insecure_transport }}</code> transport)</label>
+
+  <label class="checkline"><input type="checkbox" name="force" value="true"
+         {{ 'checked' if force }}>
+    Force (overwrite existing file / override DNS warning — old file backed up first)</label>
+
+  <button type="submit">Run pre-flight checks</button>
+</form>
+</div>
+
+{% if pf %}
+<div class="card">
+<h3>Pre-flight results for <code>{{ spec.name }}</code></h3>
+<ul class="checks">
+{% for c in pf.checks %}
+  <li class="{{ c.level }}">
+    {% if c.level == 'ok' %}✓{% elif c.level == 'warn' %}⚠{% else %}✗{% endif %}
+    {{ c.summary }}
+    {% if c.detail %}<br><span class="muted">{{ c.detail }}</span>{% endif %}
+  </li>
+{% endfor %}
+</ul>
+
+{% if preview %}
+<h4>Will write <code>{{ spec.name }}.yml</code>:</h4>
+<pre>{{ preview }}</pre>
+{% endif %}
+
+{% if confirmable %}
+<form method="post" action="/add/confirm">
+  <input type="hidden" name="name" value="{{ spec.name }}">
+  <input type="hidden" name="backend" value="{{ spec.backend }}">
+  <input type="hidden" name="host" value="{{ spec.host or '' }}">
+  <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
+  {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
+  {% if force %}<input type="hidden" name="force" value="true">{% endif %}
+  <button type="submit">Confirm — write {{ spec.name }}.yml</button>
+</form>
+{% else %}
+<p class="block"><strong>Blocked.</strong> Fix the issues above
+{% if not pf.collision %}or re-run pre-flight with Force checked{% endif %} to proceed.</p>
+{% endif %}
+</div>
+{% endif %}
+{% endblock %}

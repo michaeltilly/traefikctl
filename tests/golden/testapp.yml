@@ -1,0 +1,14 @@
+http:
+  routers:
+    testapp:
+      rule: "Host(`testapp.shire.tillynet.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: testapp
+  services:
+    testapp:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.30.5:8096"

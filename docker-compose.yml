@@ -1,0 +1,34 @@
+services:
+  traefikctl:
+    build: .
+    image: traefikctl:latest
+    container_name: traefikctl
+    restart: unless-stopped
+    # tillyadmin's UID/GID so generated files match existing ownership
+    user: "1000:1000"
+    networks:
+      - proxy
+    # SECURITY: exactly ONE bind mount — the dynamic dir is the tool's whole
+    # world. Never /opt/traefik root, never the Docker socket, never acme.json.
+    volumes:
+      - /opt/traefik/config/dynamic:/data/dynamic
+    environment:
+      TRAEFIKCTL_DYNAMIC_DIR: /data/dynamic
+      TRAEFIKCTL_DOMAIN_SUFFIX: shire.tillynet.com
+      TRAEFIKCTL_INGRESS_IP: 10.10.30.4
+      TRAEFIKCTL_CERT_RESOLVER: letsencrypt
+      TRAEFIKCTL_ENTRYPOINT: websecure
+      TRAEFIKCTL_DNS_SERVER: 10.10.30.30
+    # SECURITY: no ports! Admin surface — reachable ONLY through Traefik,
+    # behind the auth middleware below.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefikctl.rule=Host(`traefikctl.shire.tillynet.com`)"
+      - "traefik.http.routers.traefikctl.entrypoints=websecure"
+      - "traefik.http.routers.traefikctl.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefikctl.middlewares=dash-auth"
+      - "traefik.http.services.traefikctl.loadbalancer.server.port=8080"
+
+networks:
+  proxy:
+    external: true

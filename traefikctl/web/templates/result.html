@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}result{% endblock %}
+{% block content %}
+<div class="card">
+<h2 class="{{ 'ok' if ok else 'bad' }}">{{ title }}</h2>
+<p>{{ message }}</p>
+
+{% if post %}
+<h3>Post-flight</h3>
+<ul class="checks">
+  <li class="{{ 'ok' if post.ok else 'bad' }}">{{ post.summary }}</li>
+  {% if post.cert_issuer %}
+  <li class="muted">cert issuer: {{ post.cert_issuer }}</li>
+  <li class="muted">cert subject: {{ post.cert_subject }}</li>
+  {% endif %}
+  {% if post.hints %}
+  <li class="warn">Most likely causes:
+    <ul>{% for hint in post.hints %}<li>{{ hint }}</li>{% endfor %}</ul>
+  </li>
+  {% endif %}
+</ul>
+{% if host %}<p>Try it: <a href="https://{{ host }}" rel="noopener">https://{{ host }}</a></p>{% endif %}
+{% endif %}
+
+<p><a href="/">← back to services</a>{% if name %} · <a href="/service/{{ name }}">service detail</a>{% endif %}</p>
+</div>
+{% endblock %}
