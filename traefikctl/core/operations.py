@@ -275,10 +275,18 @@ def delete_zone_record(
         "the zone's negative TTL expires"
     )
     log.info("deleted Technitium record %s — %s", record.label, ttl_note)
+    if settings.wildcard_covers_ingress:
+        outcome_note = (
+            "The wildcard now covers the name at the authoritative server"
+        )
+    else:
+        outcome_note = (
+            f"Now create an A record {fqdn} → {settings.ingress_ip} in "
+            "Technitium to publish it on this ingress"
+        )
     return DeleteOutcome(
         record=record,
-        message=f"Deleted {record.label}. The wildcard now covers the name "
-        f"at the authoritative server; {ttl_note}.",
+        message=f"Deleted {record.label}. {outcome_note}; {ttl_note}.",
         negative_ttl=neg_ttl,
     )
 

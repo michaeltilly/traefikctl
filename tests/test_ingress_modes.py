@@ -363,3 +363,32 @@ def test_zone_panel_wildcard_mode_has_no_missing_published(
     panel = operations.zone_panel(wildcard)
     assert panel.missing_published == []
     assert "other-ingress" not in {r.category for r in panel.rows}
+
+
+# ---- delete outcome messaging ----
+
+def _delete_setup(monkeypatch, settings):
+    def fake_call(self, endpoint, **params):
+        if "delete" in endpoint:
+            return {}
+        if params.get("listZone"):
+            return {"records": []}
+        return {"records": [_record(f"app.{ZONE}", value="10.10.10.99",
+                                    disabled=True)]}
+    monkeypatch.setattr(TechnitiumClient, "_call", fake_call)
+
+
+def test_delete_outcome_explicit_says_create_next(explicit, monkeypatch):
+    _delete_setup(monkeypatch, explicit)
+    out = operations.delete_zone_record(
+        f"app.{ZONE}", "A", "10.10.10.99", True, explicit
+    )
+    assert f"create an A record app.{ZONE} → {MGMT_INGRESS}" in out.message
+
+
+def test_delete_outcome_wildcard_message_unchanged(wildcard, monkeypatch):
+    _delete_setup(monkeypatch, wildcard)
+    out = operations.delete_zone_record(
+        f"app.{ZONE}", "A", "10.10.10.99", True, wildcard
+    )
+    assert "The wildcard now covers the name" in out.message
