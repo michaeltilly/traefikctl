@@ -26,7 +26,7 @@ services:
     # behind the auth middleware below.
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefikctl.rule=Host(`traefikctl.shire.tillynet.com`)"
+      - "traefik.http.routers.traefikctl.rule=Host(`ingress01ctl.shire.tillynet.com`)"
       - "traefik.http.routers.traefikctl.entrypoints=websecure"
       - "traefik.http.routers.traefikctl.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefikctl.middlewares=dash-auth"
