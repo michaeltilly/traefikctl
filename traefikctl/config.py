@@ -45,6 +45,20 @@ class Settings:
             "TRAEFIKCTL_TRANSPORTS_FILE", "transports.yml"
         )
     )
+    # Technitium integration — absence of the token cleanly disables it.
+    technitium_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "TECHNITIUM_URL", "http://10.10.30.30:5380"
+        )
+    )
+    technitium_zone: str = field(
+        default_factory=lambda: os.environ.get(
+            "TECHNITIUM_ZONE", os.environ.get("TRAEFIKCTL_DOMAIN_SUFFIX", "shire.tillynet.com")
+        )
+    )
+    technitium_token: str = field(
+        default_factory=lambda: os.environ.get("TECHNITIUM_API_TOKEN", "")
+    )
 
 
 def get_settings() -> Settings:

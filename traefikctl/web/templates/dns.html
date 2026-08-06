@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}dns{% endblock %}
+{% block content %}
+<div class="card">
+<h2>Technitium zone: {{ settings.technitium_zone }}</h2>
+{% if not panel.available %}
+<p class="warn">{{ panel.error }}</p>
+{% else %}
+<p class="{{ 'ok' if panel.wildcard_ok else 'block' }}">
+  {% if panel.wildcard_ok %}✓ wildcard healthy — {{ panel.wildcard_detail }}
+  {% else %}✗ <strong>{{ panel.wildcard_detail }}</strong>{% endif %}
+</p>
+<table>
+<tr><th>record</th><th>type</th><th>value</th><th>ttl</th><th>category</th><th>notes</th></tr>
+{% for row in panel.rows %}
+<tr>
+  <td><code>{{ row.record.name }}</code></td>
+  <td>{{ row.record.type }}</td>
+  <td><code>{{ row.record.value }}</code></td>
+  <td>{{ row.record.ttl }}</td>
+  <td>
+    {% if row.category == 'wildcard' %}<span class="badge ok">wildcard</span>
+    {% elif row.category == 'disabled' %}<span class="badge bad">disabled</span>
+    {% elif row.category == 'direct-access' %}<span class="badge warn">direct-access</span>
+    {% elif row.category == 'ingress-aliased' %}<span class="badge ok">ingress-aliased</span>
+    {% else %}<span class="badge muted">{{ row.category }}</span>{% endif %}
+  </td>
+  <td>
+    {% if row.shadows %}<span class="block">shadows published service <strong>{{ row.shadows }}</strong> — traffic bypasses Traefik</span>
+    {% elif row.category == 'disabled' %}<span class="warn">occupies the name; wildcard blocked (NXDOMAIN)</span>
+    {% else %}<span class="muted">—</span>{% endif %}
+  </td>
+</tr>
+{% endfor %}
+</table>
+<p class="muted">Read-only view. Conflicting records can be deleted from the
+add-service pre-flight panel; everything else is managed in the
+<a href="{{ settings.technitium_url }}">Technitium console</a>.</p>
+{% endif %}
+</div>
+{% endblock %}

@@ -94,6 +94,47 @@ The project currently lives at `/home/tillyadmin/traefikctl` (creating
 sudo mkdir -p /opt/traefikctl && sudo chown tillyadmin:tillyadmin /opt/traefikctl && cp -r /home/tillyadmin/traefikctl/. /opt/traefikctl/ && cd /opt/traefikctl && docker compose up -d
 ```
 
+## Technitium integration (optional)
+
+With an API token configured, pre-flight sees the authoritative zone as it
+actually is — including **disabled records**, which still occupy a name and
+block the wildcard (authoritative NXDOMAIN) while being invisible to a plain
+resolution check.
+
+**Provisioning the token** (one-time, in the Technitium UI):
+1. Administration → Users → Add User (e.g. `traefikctl-api`)
+2. Zones → your zone → Options → Zone Permissions → grant that user
+   View/Modify on the zone only
+3. Administration → Sessions → Create Token for that user; put it in `.env`
+   (copy `.env.example`, `chmod 600 .env`)
+
+**What it adds:**
+- Pre-flight classifies the name against the zone: no record (wildcard
+  covers it), ingress-aliased duplicate (harmless), enabled record pointing
+  elsewhere (conflict — blocks), or disabled record (conflict — blocks, with
+  an explanation of the occupancy behavior)
+- A **guided fix**: the conflicting record can be deleted from inside the
+  pre-flight panel (web) or with `add ... --fix-dns` (CLI), always behind an
+  explicit confirmation showing exactly what will be deleted. Post-delete
+  messaging quotes the zone's real negative TTL so stale-NXDOMAIN waits are
+  expected, not mysterious
+- A read-only **DNS panel** (`/dns` in the web UI, `traefikctl dns` in the
+  CLI): wildcard health, every record classified (direct-access /
+  ingress-aliased / disabled / infra), and warnings when a record shadows a
+  published service
+
+**Integration guardrails:**
+- Records are never created or modified — the confirmed delete is the single
+  write operation in the entire integration
+- Hard denylist: the wildcard, the zone apex, `dns1`, and all SOA/NS records
+  can never be deleted, and record types the tool doesn't understand are
+  refused with a pointer to the Technitium console
+- All API calls time out at 3 s; if Technitium is down or the token is bad,
+  pre-flight degrades to the resolution-only check with a visible "zone
+  introspection unavailable" note — DNS being down never blocks publishing
+- No token configured → the integration is disabled and the tool behaves
+  exactly as before, with zero API traffic (unit-tested)
+
 ## Guardrails (hard rules baked into the code)
 
 - Never touches `traefik.yml`, `docker-compose.yml`, `.env`, or `acme.json`

@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Settings
-from . import generator, parser, validators
+from . import generator, parser, technitium, validators
 from .generator import GeneratorError, ServiceSpec
+from .technitium import TechnitiumClient, TechnitiumError, ZoneKind, ZoneRecord, ZoneVerdict
 from .validators import CheckResult, HttpsResult
 
 log = logging.getLogger("traefikctl")
@@ -24,6 +25,7 @@ class Preflight:
     checks: list[CheckResult] = field(default_factory=list)
     collision: str = ""  # description of a router-name collision, if any
     file_exists: bool = False
+    zone: ZoneVerdict | None = None  # Technitium verdict (None = not run)
 
     @property
     def blockers(self) -> list[CheckResult]:
@@ -101,9 +103,40 @@ def run_preflight(spec: ServiceSpec, settings: Settings) -> Preflight:
             )
         )
 
+    pf.zone = technitium.classify(spec.fqdn(settings), settings)
+    zone_check = _zone_verdict_check(pf.zone)
+    if zone_check:
+        pf.checks.append(zone_check)
+
     pf.checks.append(validators.dns_check(spec.fqdn(settings), settings))
     pf.checks.append(validators.tcp_check(spec.backend))
     return pf
+
+
+def _zone_verdict_check(verdict: ZoneVerdict) -> CheckResult | None:
+    """Render a ZoneVerdict as a pre-flight CheckResult (None = show nothing,
+    used when the integration is unconfigured)."""
+    if verdict.kind == ZoneKind.DISABLED_INTEGRATION:
+        return None
+    if verdict.kind == ZoneKind.UNAVAILABLE:
+        return CheckResult(
+            False,
+            "warn",
+            "zone introspection unavailable — resolution check only",
+            f"Technitium API did not answer ({verdict.detail}). "
+            "Publishing still works; conflicts can't be detected at the zone level.",
+        )
+    if verdict.kind == ZoneKind.NO_RECORD:
+        return CheckResult(True, "ok", "Technitium zone: " + verdict.detail)
+    if verdict.kind == ZoneKind.INGRESS_ALIAS:
+        return CheckResult(True, "ok", "Technitium zone: " + verdict.detail)
+    conflicts = "; ".join(r.label for r in verdict.records)
+    return CheckResult(
+        False,
+        "block",
+        f"Technitium zone conflict: {conflicts}",
+        verdict.detail,
+    )
 
 
 def render_preview(spec: ServiceSpec, settings: Settings) -> str:
@@ -188,16 +221,152 @@ def remove_service(name: str, settings: Settings) -> Path:
 
 
 @dataclass
+class DeleteOutcome:
+    record: ZoneRecord
+    message: str
+    negative_ttl: int | None = None
+
+
+def delete_zone_record(
+    fqdn: str, rtype: str, value: str, disabled: bool, settings: Settings
+) -> DeleteOutcome:
+    """The guided fix: delete ONE conflicting record in Technitium after the
+    caller's explicit confirmation. Re-fetches the record so we only ever
+    delete something that still exists exactly as the user confirmed it."""
+    client = TechnitiumClient(settings)
+    if not client.enabled:
+        raise OperationError("Technitium integration is not configured")
+    try:
+        candidates = [
+            r
+            for r in client.get_records(fqdn)
+            if r.type.upper() == rtype.upper()
+            and r.value == value
+            and r.disabled == disabled
+        ]
+    except Exception as e:
+        raise OperationError(f"could not re-read the record before deleting: {e}")
+    if not candidates:
+        raise OperationError(
+            f"no record {fqdn} {rtype} → {value} found — it may already be "
+            "gone; re-run pre-flight."
+        )
+    record = candidates[0]
+    reason = client.denylist_reason(record)
+    if reason:
+        raise OperationError(f"refusing to delete {record.label}: {reason}")
+    try:
+        client.delete_record(record)
+    except TechnitiumError as e:
+        raise OperationError(f"Technitium refused the delete: {e}")
+    neg_ttl = client.get_negative_ttl()
+    ttl_note = (
+        f"resolvers that already asked may serve stale NXDOMAIN for up to "
+        f"{neg_ttl} seconds (the zone's negative TTL)"
+        if neg_ttl
+        else "resolvers that already asked may serve stale NXDOMAIN until "
+        "the zone's negative TTL expires"
+    )
+    log.info("deleted Technitium record %s — %s", record.label, ttl_note)
+    return DeleteOutcome(
+        record=record,
+        message=f"Deleted {record.label}. The wildcard now covers the name "
+        f"at the authoritative server; {ttl_note}.",
+        negative_ttl=neg_ttl,
+    )
+
+
+@dataclass
+class ZonePanelRow:
+    record: ZoneRecord
+    category: str  # wildcard | direct-access | ingress-aliased | disabled | infra
+    shadows: str = ""  # name of a published service this record shadows
+
+
+@dataclass
+class ZonePanel:
+    available: bool
+    rows: list[ZonePanelRow] = field(default_factory=list)
+    wildcard_ok: bool = False
+    wildcard_detail: str = ""
+    error: str = ""
+
+
+def zone_panel(settings: Settings) -> ZonePanel:
+    """Read-only zone overview for the DNS page / CLI dns command."""
+    client = TechnitiumClient(settings)
+    if not client.enabled:
+        return ZonePanel(available=False, error="Technitium integration not configured")
+    try:
+        records = client.get_zone()
+    except Exception as e:
+        return ZonePanel(available=False, error=f"Technitium API unavailable: {e}")
+
+    published = {
+        r.host: r.name for r in parser.scan(settings.dynamic_dir).routers if r.host
+    }
+    zone = settings.technitium_zone.lower()
+    panel = ZonePanel(available=True)
+    wildcard_name = f"*.{zone}"
+
+    wildcard = [
+        r for r in records if r.name.lower() == wildcard_name and r.type == "A"
+    ]
+    if not wildcard:
+        panel.wildcard_ok = False
+        panel.wildcard_detail = (
+            f"NO wildcard A record found for {wildcard_name} — published "
+            "services will not resolve. This must be fixed in Technitium."
+        )
+    else:
+        w = wildcard[0]
+        if w.disabled:
+            panel.wildcard_ok = False
+            panel.wildcard_detail = f"wildcard exists but is DISABLED ({w.label})"
+        elif w.rdata.get("ipAddress") != settings.ingress_ip:
+            panel.wildcard_ok = False
+            panel.wildcard_detail = (
+                f"wildcard points at {w.value}, not the ingress "
+                f"({settings.ingress_ip}) — routing architecture is broken"
+            )
+        else:
+            panel.wildcard_ok = True
+            panel.wildcard_detail = f"{wildcard_name} → {settings.ingress_ip}"
+
+    for r in sorted(records, key=lambda r: (r.name, r.type)):
+        name = r.name.lower()
+        if name == wildcard_name:
+            category = "wildcard"
+        elif r.type in ("SOA", "NS"):
+            category = "infra"
+        elif r.disabled:
+            category = "disabled"
+        elif r.type == "A" and r.rdata.get("ipAddress") == settings.ingress_ip:
+            category = "ingress-aliased"
+        else:
+            category = "direct-access"
+        shadows = ""
+        if category in ("direct-access", "disabled") and name in published:
+            shadows = published[name]
+        panel.rows.append(ZonePanelRow(record=r, category=category, shadows=shadows))
+    return panel
+
+
+@dataclass
 class ServiceHealth:
     entry: parser.RouterEntry
     dns: CheckResult | None = None
     tcp: list[CheckResult] = field(default_factory=list)
     https: HttpsResult | None = None
+    zone: ZoneVerdict | None = None
+    zone_check: CheckResult | None = None
 
 
 def check_service(entry: parser.RouterEntry, settings: Settings) -> ServiceHealth:
     health = ServiceHealth(entry=entry)
     if entry.host:
+        health.zone = technitium.classify(entry.host, settings)
+        health.zone_check = _zone_verdict_check(health.zone)
         health.dns = validators.dns_check(entry.host, settings)
     for backend in entry.backends:
         health.tcp.append(validators.tcp_check(backend))

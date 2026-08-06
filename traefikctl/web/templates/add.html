@@ -46,6 +46,26 @@
 {% endfor %}
 </ul>
 
+{% if pf.zone and pf.zone.blocks %}
+<h4 class="block">Conflicting Technitium record{{ 's' if pf.zone.records|length > 1 }}</h4>
+{% for rec in pf.zone.records %}
+<form method="post" action="/dns/delete-confirm" style="margin:.4rem 0">
+  <code>{{ rec.label }}</code>
+  <input type="hidden" name="fqdn" value="{{ rec.name }}">
+  <input type="hidden" name="rtype" value="{{ rec.type }}">
+  <input type="hidden" name="value" value="{{ rec.value }}">
+  <input type="hidden" name="rdisabled" value="{{ 'true' if rec.disabled else 'false' }}">
+  <input type="hidden" name="name" value="{{ spec.name }}">
+  <input type="hidden" name="backend" value="{{ spec.backend }}">
+  <input type="hidden" name="host" value="{{ spec.host or '' }}">
+  {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
+  <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
+  {% if force %}<input type="hidden" name="force" value="true">{% endif %}
+  <button type="submit" class="danger" style="margin-top:.3rem">Delete record in Technitium…</button>
+</form>
+{% endfor %}
+{% endif %}
+
 {% if preview %}
 <h4>Will write <code>{{ spec.name }}.yml</code>:</h4>
 <pre>{{ preview }}</pre>

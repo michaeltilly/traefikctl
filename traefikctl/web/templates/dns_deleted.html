@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}record deleted{% endblock %}
+{% block content %}
+<div class="card">
+<h2 class="ok">Record deleted</h2>
+<p>{{ outcome.message }}</p>
+{% if spec_fields and spec_fields.name %}
+<form method="post" action="/add/preflight">
+  {% for k, v in spec_fields.items() %}{% if v is sameas true %}<input type="hidden" name="{{ k }}" value="true">{% elif v is not sameas false %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+  <button type="submit">Re-run pre-flight for {{ spec_fields.name }}</button>
+</form>
+{% endif %}
+<p><a href="/dns">DNS panel</a> · <a href="/">services</a></p>
+</div>
+{% endblock %}

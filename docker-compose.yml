@@ -12,6 +12,9 @@ services:
     # world. Never /opt/traefik root, never the Docker socket, never acme.json.
     volumes:
       - /opt/traefik/config/dynamic:/data/dynamic
+    # Technitium token + connection (file is chmod 600, git-ignored)
+    env_file:
+      - .env
     environment:
       TRAEFIKCTL_DYNAMIC_DIR: /data/dynamic
       TRAEFIKCTL_DOMAIN_SUFFIX: shire.tillynet.com

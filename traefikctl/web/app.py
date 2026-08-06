@@ -202,6 +202,89 @@ def remove(request: Request, name: str, confirm: str = Form("")):
     )
 
 
+@app.get("/dns", response_class=HTMLResponse)
+def dns_panel(request: Request):
+    panel = operations.zone_panel(settings)
+    return templates.TemplateResponse(
+        request, "dns.html", {"settings": settings, "panel": panel}
+    )
+
+
+def _spec_fields(
+    name: str, backend: str, host: str, insecure: bool, middlewares: str, force: bool
+) -> dict:
+    return {
+        "name": name, "backend": backend, "host": host,
+        "insecure": insecure, "middlewares": middlewares, "force": force,
+    }
+
+
+@app.post("/dns/delete-confirm", response_class=HTMLResponse)
+def dns_delete_confirm(
+    request: Request,
+    fqdn: str = Form(...),
+    rtype: str = Form(...),
+    value: str = Form(...),
+    rdisabled: str = Form("false"),
+    # original add-form context so the user can bounce back to pre-flight
+    name: str = Form(""),
+    backend: str = Form(""),
+    host: str = Form(""),
+    insecure: bool = Form(False),
+    middlewares: str = Form(""),
+    force: bool = Form(False),
+):
+    return templates.TemplateResponse(
+        request,
+        "dns_delete.html",
+        {
+            "settings": settings,
+            "fqdn": fqdn, "rtype": rtype, "value": value,
+            "rdisabled": rdisabled == "true",
+            "spec_fields": _spec_fields(name, backend, host, insecure, middlewares, force),
+        },
+    )
+
+
+@app.post("/dns/delete", response_class=HTMLResponse)
+def dns_delete(
+    request: Request,
+    fqdn: str = Form(...),
+    rtype: str = Form(...),
+    value: str = Form(...),
+    rdisabled: str = Form("false"),
+    name: str = Form(""),
+    backend: str = Form(""),
+    host: str = Form(""),
+    insecure: bool = Form(False),
+    middlewares: str = Form(""),
+    force: bool = Form(False),
+):
+    try:
+        outcome = operations.delete_zone_record(
+            fqdn, rtype, value, rdisabled == "true", settings
+        )
+    except operations.OperationError as e:
+        log.error("zone delete %s %s failed: %s", fqdn, rtype, e)
+        return templates.TemplateResponse(
+            request,
+            "result.html",
+            {"settings": settings, "ok": False, "title": "Record not deleted",
+             "message": str(e), "post": None, "name": None},
+        )
+    return templates.TemplateResponse(
+        request,
+        "dns_deleted.html",
+        {
+            "settings": settings,
+            "outcome": outcome,
+            "spec_fields": _spec_fields(name, backend, host, insecure, middlewares, force)
+            if name
+            else None,
+        },
+    )
+
+
 @app.get("/health")
 def health():
     return {"ok": True}

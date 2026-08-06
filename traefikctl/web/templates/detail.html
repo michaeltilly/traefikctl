@@ -15,6 +15,7 @@
 <div class="card">
 <h3>Health check</h3>
 <ul class="checks">
+{% if h.zone_check %}<li class="{{ h.zone_check.level }}">Zone: {{ h.zone_check.summary }}{% if h.zone_check.detail %}<br><span class="muted">{{ h.zone_check.detail }}</span>{% endif %}</li>{% endif %}
 {% if h.dns %}<li class="{{ h.dns.level }}">DNS: {{ h.dns.summary }}{% if h.dns.detail %}<br><span class="muted">{{ h.dns.detail }}</span>{% endif %}</li>{% endif %}
 {% for t in h.tcp %}<li class="{{ t.level }}">TCP: {{ t.summary }}</li>{% endfor %}
 {% if h.https %}
