@@ -1,43 +1,54 @@
 {% extends "base.html" %}
+{% from "_macros.html" import check_row, https_row %}
 {% block title %}{{ h.entry.name }}{% endblock %}
 {% block content %}
+<div class="pagehead">
+  <h1>{{ h.entry.name }}</h1>
+  <span class="muted"><code>{{ h.entry.file.name }}</code></span>
+  <span class="spacer"></span>
+  <form method="get" action="/service/{{ h.entry.name }}"><button type="submit" class="secondary">Re-run checks</button></form>
+</div>
+
 <div class="card">
-<h2>{{ h.entry.name }}</h2>
-<table>
-<tr><th>host</th><td>{% if h.entry.host %}<a href="https://{{ h.entry.host }}">{{ h.entry.host }}</a>{% else %}<span class="muted">{{ h.entry.rule }}</span>{% endif %}</td></tr>
-<tr><th>backend</th><td>{% for b in h.entry.backends %}<code>{{ b }}</code> {% else %}—{% endfor %}</td></tr>
-<tr><th>insecure transport</th><td>{{ h.entry.insecure_transport or "no" }}</td></tr>
-<tr><th>middlewares</th><td>{{ h.entry.middlewares|join(", ") if h.entry.middlewares else "—" }}</td></tr>
-<tr><th>file</th><td><code>{{ h.entry.file }}</code></td></tr>
+<table class="kvtable">
+<tr><th>host</th><td>{% if h.entry.host %}<a href="https://{{ h.entry.host }}" rel="noopener"><code>{{ h.entry.host }}</code></a>{% else %}<code>{{ h.entry.rule }}</code>{% endif %}</td></tr>
+<tr><th>backend</th><td>{% for b in h.entry.backends %}<code>{{ b }}</code>{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">—</span>{% endfor %}</td></tr>
+<tr><th>transport</th><td>{% if h.entry.insecure_transport %}<span class="tag">{{ h.entry.insecure_transport }}</span> <span class="help" style="display:inline">certificate verification skipped on the backend hop</span>{% else %}<span class="faint">default (verified)</span>{% endif %}</td></tr>
+<tr><th>middlewares</th><td>{% if h.entry.middlewares %}{% for m in h.entry.middlewares %}<span class="tag">{{ m }}</span> {% endfor %}{% else %}<span class="faint">—</span>{% endif %}</td></tr>
+<tr><th>source file</th><td><code>{{ h.entry.file }}</code></td></tr>
 </table>
 </div>
 
-<div class="card">
-<h3>Health check</h3>
-<ul class="checks">
-{% if h.zone_check %}<li class="{{ h.zone_check.level }}">Zone: {{ h.zone_check.summary }}{% if h.zone_check.detail %}<br><span class="muted">{{ h.zone_check.detail }}</span>{% endif %}</li>{% endif %}
-{% if h.dns %}<li class="{{ h.dns.level }}">DNS: {{ h.dns.summary }}{% if h.dns.detail %}<br><span class="muted">{{ h.dns.detail }}</span>{% endif %}</li>{% endif %}
-{% for t in h.tcp %}<li class="{{ t.level }}">TCP: {{ t.summary }}</li>{% endfor %}
-{% if h.https %}
-<li class="{{ 'ok' if h.https.ok else 'bad' }}">HTTPS: {{ h.https.summary }}</li>
-{% if h.https.cert_issuer %}<li class="muted">cert issuer: {{ h.https.cert_issuer }}<br>cert subject: {{ h.https.cert_subject }}</li>{% endif %}
-{% if h.https.hints %}<li class="warn">Likely causes:<ul>{% for hint in h.https.hints %}<li>{{ hint }}</li>{% endfor %}</ul></li>{% endif %}
-{% endif %}
-</ul>
-<form method="get" action="/service/{{ h.entry.name }}"><button type="submit">Re-run checks</button></form>
+{% set states = [] %}
+{% if h.zone_check %}{% set _ = states.append(h.zone_check.level) %}{% endif %}
+{% if h.dns %}{% set _ = states.append(h.dns.level) %}{% endif %}
+{% for t in h.tcp %}{% set _ = states.append(t.level) %}{% endfor %}
+{% if h.https %}{% set _ = states.append('ok' if h.https.ok else 'block') %}{% endif %}
+<div class="ledger" data-worst="{{ 'block' if 'block' in states else ('warn' if 'warn' in states else 'ok') }}">
+  <div class="ledger-head">
+    <span class="ledger-kind">Health</span>
+    <span class="ledger-target">{{ h.entry.host or h.entry.name }}</span>
+    <span class="ledger-time">{{ now() }}</span>
+  </div>
+  {% if h.zone_check %}{{ check_row(h.zone_check) }}{% endif %}
+  {% if h.dns %}{{ check_row(h.dns) }}{% endif %}
+  {% for t in h.tcp %}{{ check_row(t) }}{% endfor %}
+  {% if h.https %}{{ https_row(h.https) }}{% endif %}
 </div>
 
 <div class="card">
-<h3>Remove</h3>
+<h3>Remove service</h3>
 {% if removable %}
-<form method="post" action="/remove/{{ h.entry.name }}">
-  <label for="confirm">Type <code>{{ h.entry.name }}</code> to confirm deletion of <code>{{ h.entry.file.name }}</code>:</label>
-  <input type="text" id="confirm" name="confirm" autocomplete="off">
-  <button type="submit" class="danger">Remove service</button>
-</form>
+<div class="confirm-delete">
+  <p style="margin-top:0">Deletes <code>{{ h.entry.file.name }}</code> from the dynamic directory — the route stops resolving within seconds. The DNS wildcard and the backend itself are untouched.</p>
+  <form method="post" action="/remove/{{ h.entry.name }}">
+    <label for="confirm">Type <code>{{ h.entry.name }}</code> to confirm</label>
+    <input type="text" id="confirm" name="confirm" autocomplete="off" spellcheck="false" style="max-width:20rem">
+    <div class="actions"><button type="submit" class="danger">Remove service</button></div>
+  </form>
+</div>
 {% else %}
-<p class="muted">This router lives in <code>{{ h.entry.file.name }}</code>, which traefikctl
-did not create — edit that file manually.</p>
+<p class="muted">This router lives in <code>{{ h.entry.file.name }}</code>, which traefikctl did not create — edit that file manually.</p>
 {% endif %}
 </div>
 {% endblock %}

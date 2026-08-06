@@ -1,90 +1,101 @@
 {% extends "base.html" %}
 {% block title %}add{% endblock %}
 {% block content %}
+<div class="pagehead"><h1>Add service</h1></div>
+
 <div class="card">
-<h2>Add a service</h2>
 <form method="post" action="/add/preflight">
-  <label for="name">Name</label>
+  <label for="name">Service name</label>
   <input type="text" id="name" name="name" required placeholder="jellyfin"
-         value="{{ spec.name if spec else '' }}">
-  <p class="muted">Becomes <code>NAME.{{ settings.domain_suffix }}</code> and <code>NAME.yml</code>.</p>
+         value="{{ spec.name if spec else '' }}" autocomplete="off" spellcheck="false">
+  <p class="help">Becomes <code>NAME.{{ settings.domain_suffix }}</code>, written to <code>NAME.yml</code>. Lowercase letters, digits, hyphens.</p>
 
   <label for="backend">Backend URL</label>
   <input type="text" id="backend" name="backend" required placeholder="http://10.10.30.5:8096"
-         value="{{ spec.backend if spec else '' }}">
+         value="{{ spec.backend if spec else '' }}" autocomplete="off" spellcheck="false">
+  <p class="help">Where Traefik proxies to. Use <code>https://</code> only if the backend itself serves TLS.</p>
 
-  <label for="host">Hostname override <span class="muted">(optional)</span></label>
+  <label for="host">Hostname override <span class="faint">(optional)</span></label>
   <input type="text" id="host" name="host" placeholder="custom.{{ settings.domain_suffix }}"
-         value="{{ (spec.host or '') if spec else '' }}">
+         value="{{ (spec.host or '') if spec else '' }}" autocomplete="off" spellcheck="false">
 
-  <label for="middlewares">Middlewares <span class="muted">(comma-separated, optional)</span></label>
+  <label for="middlewares">Middlewares <span class="faint">(comma-separated, optional)</span></label>
   <input type="text" id="middlewares" name="middlewares" placeholder="authentik-forward-auth"
-         value="{{ middlewares_raw or '' }}">
+         value="{{ middlewares_raw or '' }}" autocomplete="off" spellcheck="false">
 
   <label class="checkline"><input type="checkbox" name="insecure" value="true"
          {{ 'checked' if spec and spec.insecure }}>
-    HTTPS backend with self-signed cert (use <code>{{ settings.insecure_transport }}</code> transport)</label>
+    <span>Backend has a self-signed certificate
+      <span class="help">Needed only for <code>https://</code> backends whose certificate a browser would warn about (Proxmox, OPNsense, iDRAC). Never needed for <code>http://</code> backends.</span>
+    </span></label>
 
   <label class="checkline"><input type="checkbox" name="force" value="true"
          {{ 'checked' if force }}>
-    Force (overwrite existing file / override DNS warning — old file backed up first)</label>
+    <span>Force
+      <span class="help">Overwrites an existing <code>NAME.yml</code> (backed up to <code>NAME.yml.bak</code> first) and overrides a DNS block. Collisions with other files are never overridable.</span>
+    </span></label>
 
-  <button type="submit">Run pre-flight checks</button>
+  <div class="actions"><button type="submit">Run pre-flight checks</button></div>
 </form>
 </div>
 
 {% if pf %}
-<div class="card">
-<h3>Pre-flight results for <code>{{ spec.name }}</code></h3>
-<ul class="checks">
-{% for c in pf.checks %}
-  <li class="{{ c.level }}">
-    {% if c.level == 'ok' %}✓{% elif c.level == 'warn' %}⚠{% else %}✗{% endif %}
-    {{ c.summary }}
-    {% if c.detail %}<br><span class="muted">{{ c.detail }}</span>{% endif %}
-  </li>
-{% endfor %}
-</ul>
-
-{% if pf.zone and pf.zone.blocks %}
-<h4 class="block">Conflicting Technitium record{{ 's' if pf.zone.records|length > 1 }}</h4>
-{% for rec in pf.zone.records %}
-<form method="post" action="/dns/delete-confirm" style="margin:.4rem 0">
-  <code>{{ rec.label }}</code>
-  <input type="hidden" name="fqdn" value="{{ rec.name }}">
-  <input type="hidden" name="rtype" value="{{ rec.type }}">
-  <input type="hidden" name="value" value="{{ rec.value }}">
-  <input type="hidden" name="rdisabled" value="{{ 'true' if rec.disabled else 'false' }}">
-  <input type="hidden" name="name" value="{{ spec.name }}">
-  <input type="hidden" name="backend" value="{{ spec.backend }}">
-  <input type="hidden" name="host" value="{{ spec.host or '' }}">
-  {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
-  <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
-  {% if force %}<input type="hidden" name="force" value="true">{% endif %}
-  <button type="submit" class="danger" style="margin-top:.3rem">Delete record in Technitium…</button>
-</form>
-{% endfor %}
-{% endif %}
-
-{% if preview %}
-<h4>Will write <code>{{ spec.name }}.yml</code>:</h4>
-<pre>{{ preview }}</pre>
-{% endif %}
+<div class="ledger" data-worst="{{ 'block' if pf.blockers else ('warn' if pf.warnings else 'ok') }}">
+  <div class="ledger-head">
+    <span class="ledger-kind">Pre-flight</span>
+    <span class="ledger-target">{{ spec.fqdn(settings) }}</span>
+    <span class="ledger-time">{{ now() }}</span>
+  </div>
+  {% for c in pf.checks %}
+  <div class="ledger-row" data-state="{{ c.level }}">
+    <div class="ledger-glyph">{% if c.level == 'ok' %}✓{% elif c.level == 'warn' %}!{% else %}✕{% endif %}</div>
+    <div>
+      <div class="ledger-finding">{{ c.summary }}</div>
+      {% if c.detail %}<div class="ledger-detail">{{ c.detail }}</div>{% endif %}
+      {% if c.level == 'block' and pf.zone and pf.zone.blocks and 'Technitium zone conflict' in c.summary %}
+      {% for rec in pf.zone.records %}
+      <form method="post" action="/dns/delete-confirm" class="ledger-fix">
+        <code>{{ rec.name }} {{ rec.type }} → {{ rec.value }} · ttl {{ rec.ttl }} · {{ 'DISABLED' if rec.disabled else 'enabled' }}</code>
+        <input type="hidden" name="fqdn" value="{{ rec.name }}">
+        <input type="hidden" name="rtype" value="{{ rec.type }}">
+        <input type="hidden" name="value" value="{{ rec.value }}">
+        <input type="hidden" name="rdisabled" value="{{ 'true' if rec.disabled else 'false' }}">
+        <input type="hidden" name="name" value="{{ spec.name }}">
+        <input type="hidden" name="backend" value="{{ spec.backend }}">
+        <input type="hidden" name="host" value="{{ spec.host or '' }}">
+        {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
+        <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
+        {% if force %}<input type="hidden" name="force" value="true">{% endif %}
+        <button type="submit" class="danger">Delete record in Technitium…</button>
+      </form>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
 
 {% if confirmable %}
-<form method="post" action="/add/confirm">
-  <input type="hidden" name="name" value="{{ spec.name }}">
-  <input type="hidden" name="backend" value="{{ spec.backend }}">
-  <input type="hidden" name="host" value="{{ spec.host or '' }}">
-  <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
-  {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
-  {% if force %}<input type="hidden" name="force" value="true">{% endif %}
-  <button type="submit">Confirm — write {{ spec.name }}.yml</button>
-</form>
-{% else %}
-<p class="block"><strong>Blocked.</strong> Fix the issues above
-{% if not pf.collision %}or re-run pre-flight with Force checked{% endif %} to proceed.</p>
-{% endif %}
+<div class="confirm-write">
+  <h4>Ready to write <code>{{ spec.name }}.yml</code> to the live dynamic directory</h4>
+  <p class="muted" style="margin:0 0 .3rem">Traefik hot-reloads it within seconds — this publishes the route immediately.</p>
+  {% if preview %}<pre class="yamlpreview">{{ preview }}</pre>{% endif %}
+  <form method="post" action="/add/confirm">
+    <input type="hidden" name="name" value="{{ spec.name }}">
+    <input type="hidden" name="backend" value="{{ spec.backend }}">
+    <input type="hidden" name="host" value="{{ spec.host or '' }}">
+    <input type="hidden" name="middlewares" value="{{ middlewares_raw or '' }}">
+    {% if spec.insecure %}<input type="hidden" name="insecure" value="true">{% endif %}
+    {% if force %}<input type="hidden" name="force" value="true">{% endif %}
+    <div class="actions"><button type="submit">Publish service</button>
+      <a href="/add">Cancel</a></div>
+  </form>
 </div>
+{% else %}
+<div class="notice notice-bad">
+  <span class="notice-glyph">✕</span>
+  <div><strong>Blocked.</strong> Fix the findings above{% if not pf.collision %}, or re-run pre-flight with Force checked to override the DNS block{% endif %}. Nothing was written.</div>
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

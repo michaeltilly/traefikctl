@@ -1,27 +1,28 @@
 {% extends "base.html" %}
+{% from "_macros.html" import https_row %}
 {% block title %}result{% endblock %}
 {% block content %}
-<div class="card">
-<h2 class="{{ 'ok' if ok else 'bad' }}">{{ title }}</h2>
-<p>{{ message }}</p>
+<div class="notice {{ 'notice-ok' if ok else 'notice-bad' }}" role="status">
+  <span class="notice-glyph">{{ '✓' if ok else '✕' }}</span>
+  <div><strong>{{ title }}</strong><div class="muted" style="margin-top:.15rem">{{ message }}</div></div>
+</div>
 
 {% if post %}
-<h3>Post-flight</h3>
-<ul class="checks">
-  <li class="{{ 'ok' if post.ok else 'bad' }}">{{ post.summary }}</li>
-  {% if post.cert_issuer %}
-  <li class="muted">cert issuer: {{ post.cert_issuer }}</li>
-  <li class="muted">cert subject: {{ post.cert_subject }}</li>
-  {% endif %}
-  {% if post.hints %}
-  <li class="warn">Most likely causes:
-    <ul>{% for hint in post.hints %}<li>{{ hint }}</li>{% endfor %}</ul>
-  </li>
-  {% endif %}
-</ul>
-{% if host %}<p>Try it: <a href="https://{{ host }}" rel="noopener">https://{{ host }}</a></p>{% endif %}
+<div class="ledger" data-worst="{{ 'ok' if post.ok else 'block' }}">
+  <div class="ledger-head">
+    <span class="ledger-kind">Post-flight</span>
+    {% if host %}<span class="ledger-target">{{ host }}</span>{% endif %}
+    <span class="ledger-time">{{ now() }}</span>
+  </div>
+  {{ https_row(post) }}
+</div>
+{% if host and post.ok %}
+<p>Route is live: <a href="https://{{ host }}" rel="noopener"><code>https://{{ host }}</code></a></p>
+{% endif %}
 {% endif %}
 
-<p><a href="/">← back to services</a>{% if name %} · <a href="/service/{{ name }}">service detail</a>{% endif %}</p>
-</div>
+<p class="actions">
+  <a class="btn secondary" style="padding:.5rem .95rem" href="/">Back to services</a>
+  {% if name %}<a href="/service/{{ name }}">Service detail</a>{% endif %}
+</p>
 {% endblock %}

@@ -4,52 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>traefikctl · {% block title %}{% endblock %}</title>
-<style>
-:root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --mut:#68727f; --line:#e3e6ea;
-        --ok:#1a7f4b; --warn:#a86500; --bad:#b3261e; --acc:#2456c8; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg:#12161c; --card:#1a212b; --ink:#e8ebef; --mut:#95a0ad;
-          --line:#2b3441; --ok:#4cc38a; --warn:#e5a54f; --bad:#ef7b74; --acc:#7ba3f2; }
-}
-* { box-sizing:border-box; }
-body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
-header { display:flex; align-items:baseline; gap:1.5rem; padding:1rem 1.5rem;
-         border-bottom:1px solid var(--line); background:var(--card); }
-header h1 { font-size:1.1rem; margin:0; }
-header a { color:var(--acc); text-decoration:none; }
-main { max-width:64rem; margin:1.5rem auto; padding:0 1rem; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:10px;
-        padding:1.25rem 1.5rem; margin-bottom:1.25rem; }
-table { border-collapse:collapse; width:100%; }
-th, td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid var(--line);
-         vertical-align:top; }
-th { color:var(--mut); font-weight:600; font-size:.8rem; text-transform:uppercase; }
-code, pre { font-family:ui-monospace, monospace; font-size:.85rem; }
-pre { background:var(--bg); border:1px solid var(--line); border-radius:8px;
-      padding:1rem; overflow-x:auto; }
-.ok { color:var(--ok); } .warn { color:var(--warn); } .block, .bad { color:var(--bad); }
-.badge { font-size:.75rem; padding:.1rem .5rem; border-radius:99px;
-         border:1px solid currentColor; }
-label { display:block; margin:.8rem 0 .2rem; font-weight:600; }
-input[type=text], input[type=url] { width:100%; padding:.5rem .7rem; border-radius:8px;
-        border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:1rem; }
-.checkline { display:flex; gap:.5rem; align-items:center; margin:.6rem 0; font-weight:400; }
-button { margin-top:1rem; padding:.55rem 1.2rem; border-radius:8px; border:0;
-         background:var(--acc); color:#fff; font-size:1rem; cursor:pointer; }
-button.danger { background:var(--bad); }
-button:disabled { opacity:.5; cursor:not-allowed; }
-.muted { color:var(--mut); }
-ul.checks { list-style:none; padding:0; } ul.checks li { margin:.4rem 0; }
-</style>
+<script>
+/* apply persisted theme before first paint */
+try {
+  var t = localStorage.getItem("traefikctl-theme");
+  if (t) document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header>
-  <h1>traefikctl</h1>
-  <a href="/">services</a>
-  <a href="/add">add service</a>
-  <a href="/dns">dns</a>
-  <span class="muted" style="margin-left:auto">*.{{ settings.domain_suffix }} → {{ settings.ingress_ip }}</span>
+<header class="topbar">
+  <span class="wordmark">traefik<span>ctl</span></span>
+  {% set path = request.url.path %}
+  <nav class="topnav">
+    <a href="/" {% if path == '/' or path.startswith('/service') %}aria-current="page"{% endif %}>Services</a>
+    <a href="/add" {% if path.startswith('/add') %}aria-current="page"{% endif %}>Add service</a>
+    <a href="/dns" {% if path.startswith('/dns') %}aria-current="page"{% endif %}>DNS</a>
+  </nav>
+  <div class="envid">
+    <span>ingress01</span>
+    <span class="envhost">*.{{ settings.domain_suffix }} → {{ settings.ingress_ip }}</span>
+    <button type="button" id="theme-toggle" class="theme-btn">Light</button>
+  </div>
 </header>
 <main>{% block content %}{% endblock %}</main>
+<script src="/static/app.js"></script>
 </body>
 </html>

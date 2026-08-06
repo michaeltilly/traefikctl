@@ -25,4 +25,4 @@ build-backend = "setuptools.build_meta"
 include = ["traefikctl*"]
 
 [tool.setuptools.package-data]
-traefikctl = ["templates/*.j2", "web/templates/*.html"]
+traefikctl = ["templates/*.j2", "web/templates/*.html", "web/static/*", "web/static/fonts/*"]

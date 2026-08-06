@@ -1,35 +1,52 @@
 {% extends "base.html" %}
 {% block title %}services{% endblock %}
 {% block content %}
-<div class="card">
-<h2>Published services</h2>
-{% if scan.routers %}
-<table>
-<tr><th>name</th><th>host</th><th>backend</th><th>insecure</th><th>middlewares</th><th>file</th></tr>
-{% for r in scan.routers %}
-<tr>
-  <td><a href="/service/{{ r.name }}">{{ r.name }}</a></td>
-  <td>{% if r.host %}<a href="https://{{ r.host }}" rel="noopener">{{ r.host }}</a>{% else %}<span class="muted">{{ r.rule or "—" }}</span>{% endif %}</td>
-  <td>{% for b in r.backends %}<code>{{ b }}</code>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">—</span>{% endfor %}</td>
-  <td>{% if r.insecure_transport %}<span class="badge warn">{{ r.insecure_transport }}</span>{% else %}<span class="muted">no</span>{% endif %}</td>
-  <td>{% if r.middlewares %}{{ r.middlewares|join(", ") }}{% else %}<span class="muted">—</span>{% endif %}</td>
-  <td><code>{{ r.file.name }}</code></td>
-</tr>
-{% endfor %}
-</table>
-{% else %}
-<p class="muted">No routers found in {{ settings.dynamic_dir }}.</p>
-{% endif %}
+<div class="pagehead">
+  <h1>Published services</h1>
+  <span class="muted">{{ scan.routers|length }} route{{ 's' if scan.routers|length != 1 }} in <code>{{ settings.dynamic_dir }}</code></span>
+  <span class="spacer"></span>
+  <a class="btn" href="/add">Add service</a>
 </div>
 
 {% if scan.errors %}
-<div class="card">
-<h3 class="warn">Files with problems</h3>
-<ul class="checks">
-{% for f, err in scan.errors.items() %}
-<li><code>{{ f.name }}</code> — <span class="warn">{{ err }}</span></li>
-{% endfor %}
-</ul>
+<div class="notice notice-warn">
+  <span class="notice-glyph">!</span>
+  <div>
+    <strong>{{ scan.errors|length }} file{{ 's' if scan.errors|length != 1 }} could not be fully parsed</strong> — shown below, routes from other files are unaffected.
+    <div class="muted" style="margin-top:.25rem">
+      {% for f, err in scan.errors.items() %}<code>{{ f.name }}</code> — {{ err }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+    </div>
+  </div>
 </div>
 {% endif %}
+
+<div class="card">
+{% if scan.routers %}
+<div class="tablewrap">
+<table>
+  <tr>
+    <th>service</th><th>host</th><th>backend</th><th>TLS</th>
+    <th>transport</th><th>middlewares</th><th>file</th><th></th>
+  </tr>
+  {% for r in scan.routers %}
+  <tr>
+    <td><a href="/service/{{ r.name }}">{{ r.name }}</a></td>
+    <td>{% if r.host %}<a href="https://{{ r.host }}" rel="noopener"><code>{{ r.host }}</code></a>{% else %}<code class="faint">{{ r.rule or "—" }}</code>{% endif %}</td>
+    <td>{% for b in r.backends %}<code>{{ b }}</code>{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">—</span>{% endfor %}</td>
+    <td>{% if r.host %}<span class="pill pill-ok">wildcard</span>{% else %}<span class="pill pill-off">n/a</span>{% endif %}</td>
+    <td>{% if r.insecure_transport %}<span class="tag">{{ r.insecure_transport }}</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+    <td>{% if r.middlewares %}{% for m in r.middlewares %}<span class="tag">{{ m }}</span> {% endfor %}{% else %}<span class="faint">—</span>{% endif %}</td>
+    <td><code class="faint">{{ r.file.name }}</code></td>
+    <td><a href="/service/{{ r.name }}">checks →</a></td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<div class="empty">
+  <p>No routes published yet.</p>
+  <p><a class="btn" href="/add">Publish your first service</a></p>
+</div>
+{% endif %}
+</div>
 {% endblock %}

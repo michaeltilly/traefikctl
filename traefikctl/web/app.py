@@ -11,8 +11,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ..config import get_settings
@@ -29,7 +32,15 @@ log = logging.getLogger("traefikctl.web")
 settings = get_settings()
 
 app = FastAPI(title="traefikctl", docs_url=None, redoc_url=None, openapi_url=None)
+app.mount(
+    "/static",
+    StaticFiles(directory=str(Path(__file__).parent / "static")),
+    name="static",
+)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["now"] = lambda: datetime.now(timezone.utc).strftime(
+    "%Y-%m-%d %H:%M:%S UTC"
+)
 
 
 def _parse_middlewares(raw: str) -> list[str]:

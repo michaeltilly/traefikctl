@@ -1,0 +1,26 @@
+{% macro check_row(c) %}
+<div class="ledger-row" data-state="{{ c.level }}">
+  <div class="ledger-glyph">{% if c.level == 'ok' %}✓{% elif c.level == 'warn' %}!{% else %}✕{% endif %}</div>
+  <div>
+    <div class="ledger-finding">{{ c.summary }}</div>
+    {% if c.detail %}<div class="ledger-detail">{{ c.detail }}</div>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro https_row(post) %}
+<div class="ledger-row" data-state="{{ 'ok' if post.ok else 'block' }}">
+  <div class="ledger-glyph">{{ '✓' if post.ok else '✕' }}</div>
+  <div>
+    <div class="ledger-finding">{{ post.summary }}</div>
+    {% if post.cert_issuer %}
+    <div class="ledger-detail">issuer <code>{{ post.cert_issuer }}</code> · subject <code>{{ post.cert_subject }}</code></div>
+    {% endif %}
+    {% if post.hints %}
+    <div class="ledger-detail">Likely causes:
+      <ul style="margin:.2rem 0 0 1.1rem; padding:0">{% for h in post.hints %}<li>{{ h }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

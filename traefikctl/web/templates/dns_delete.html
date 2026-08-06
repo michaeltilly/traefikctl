@@ -1,27 +1,28 @@
 {% extends "base.html" %}
 {% block title %}confirm delete{% endblock %}
 {% block content %}
-<div class="card">
-<h2 class="bad">Delete DNS record in Technitium?</h2>
-<p>This will permanently delete the following record from the
-<code>{{ settings.technitium_zone }}</code> zone:</p>
-<table>
-<tr><th>name</th><td><code>{{ fqdn }}</code></td></tr>
-<tr><th>type</th><td>{{ rtype }}</td></tr>
-<tr><th>value</th><td><code>{{ value }}</code></td></tr>
-<tr><th>state</th><td>{% if rdisabled %}<span class="bad">disabled</span> (occupies the name, blocks the wildcard){% else %}enabled{% endif %}</td></tr>
-</table>
-<p>Afterwards the wildcard (<code>*.{{ settings.technitium_zone }}</code> →
-{{ settings.ingress_ip }}) covers the name. This is the only write traefikctl
-ever performs against DNS.</p>
-<form method="post" action="/dns/delete">
-  <input type="hidden" name="fqdn" value="{{ fqdn }}">
-  <input type="hidden" name="rtype" value="{{ rtype }}">
-  <input type="hidden" name="value" value="{{ value }}">
-  <input type="hidden" name="rdisabled" value="{{ 'true' if rdisabled else 'false' }}">
-  {% for k, v in spec_fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v if v is not sameas false else '' }}">{% endfor %}
-  <button type="submit" class="danger">Delete record</button>
-</form>
-<p><a href="/add">← cancel</a></p>
+<div class="pagehead"><h1>Delete DNS record</h1></div>
+
+<div class="confirm-delete" style="max-width:44rem">
+  <p style="margin-top:0">This permanently deletes one record from the authoritative zone
+  <code>{{ settings.technitium_zone }}</code>. It is the only write traefikctl ever performs against DNS.</p>
+  <table class="kvtable" style="margin:.6rem 0 .8rem">
+    <tr><th>name</th><td><code>{{ fqdn }}</code></td></tr>
+    <tr><th>type</th><td><code>{{ rtype }}</code></td></tr>
+    <tr><th>value</th><td><code>{{ value }}</code></td></tr>
+    <tr><th>state</th><td>{% if rdisabled %}<span class="pill pill-bad">disabled</span> <span class="muted">occupies the name and blocks the wildcard</span>{% else %}<span class="pill pill-warn">enabled</span>{% endif %}</td></tr>
+  </table>
+  <p class="muted">Afterwards the wildcard <code>*.{{ settings.technitium_zone }} → {{ settings.ingress_ip }}</code> covers the name. Resolvers may briefly serve stale answers.</p>
+  <form method="post" action="/dns/delete">
+    <input type="hidden" name="fqdn" value="{{ fqdn }}">
+    <input type="hidden" name="rtype" value="{{ rtype }}">
+    <input type="hidden" name="value" value="{{ value }}">
+    <input type="hidden" name="rdisabled" value="{{ 'true' if rdisabled else 'false' }}">
+    {% for k, v in spec_fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v if v is not sameas false else '' }}">{% endfor %}
+    <div class="actions">
+      <button type="submit" class="danger">Delete record</button>
+      <a href="/add">Cancel</a>
+    </div>
+  </form>
 </div>
 {% endblock %}
