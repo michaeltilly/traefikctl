@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}record created{% endblock %}
+{% block content %}
+<div class="notice notice-ok" role="status">
+  <span class="notice-glyph">✓</span>
+  <div><strong>Record created</strong>
+    <div class="muted" style="margin-top:.15rem">{{ outcome.message }}</div>
+  </div>
+</div>
+
+{% if spec_fields and spec_fields.name %}
+<form method="post" action="/add/preflight">
+  {% for k, v in spec_fields.items() %}{% if v is sameas true %}<input type="hidden" name="{{ k }}" value="true">{% elif v is not sameas false %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+  <div class="actions"><button type="submit">Re-run pre-flight for {{ spec_fields.name }}</button>
+    <a href="/dns">DNS zone</a> · <a href="/">Services</a></div>
+</form>
+{% else %}
+<p class="actions"><a class="btn" href="/dns">DNS zone</a> <a href="/">Services</a></p>
+{% endif %}
+{% endblock %}

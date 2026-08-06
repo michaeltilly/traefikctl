@@ -23,8 +23,12 @@ try {
     <a href="/dns" {% if path.startswith('/dns') %}aria-current="page"{% endif %}>DNS</a>
   </nav>
   <div class="envid">
-    <span>ingress01</span>
+    <span>{{ settings.instance_name }}</span>
+    {% if settings.wildcard_covers_ingress %}
     <span class="envhost">*.{{ settings.domain_suffix }} → {{ settings.ingress_ip }}</span>
+    {% else %}
+    <span class="envhost">explicit-record mode · → {{ settings.ingress_ip }}</span>
+    {% endif %}
     <button type="button" id="theme-toggle" class="theme-btn">Light</button>
   </div>
 </header>

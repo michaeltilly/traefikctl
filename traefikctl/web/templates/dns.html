@@ -24,6 +24,16 @@
   {% if panel.wildcard_ok %}<span class="muted">— every unclaimed name routes to the ingress</span>{% endif %}
 </div>
 
+{% if panel.missing_published %}
+<div class="notice notice-warn">
+  <span class="notice-glyph">!</span>
+  <div><strong>Published here but missing the required A record:</strong>
+    {% for svc in panel.missing_published %}<code>{{ svc }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+    <div class="muted" style="margin-top:.15rem">On this ingress the wildcard points at the other ingress — these routes are unreachable until each name gets an A record → {{ settings.ingress_ip }} in Technitium.</div>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
 <div class="tablewrap">
 <table>
@@ -39,11 +49,13 @@
       {% elif row.category == 'disabled' %}<span class="pill pill-bad">disabled</span>
       {% elif row.category == 'direct-access' %}<span class="pill pill-warn">direct-access</span>
       {% elif row.category == 'ingress-aliased' %}<span class="pill pill-ok">ingress-aliased</span>
+      {% elif row.category == 'other-ingress' %}<span class="pill pill-warn">other-ingress</span>
       {% else %}<span class="pill pill-off">{{ row.category }}</span>{% endif %}
     </td>
     <td>
       {% if row.shadows %}<span style="color:var(--bad)">shadows published service <strong>{{ row.shadows }}</strong> — traffic bypasses Traefik</span>
       {% elif row.category == 'disabled' %}<span style="color:var(--warn)">occupies the name; wildcard blocked (NXDOMAIN)</span>
+      {% elif row.category == 'other-ingress' %}<span class="faint">wildcard-covered (other ingress) — belongs to the service ingress</span>
       {% elif row.category == 'direct-access' %}<span class="faint">resolves past the ingress by design</span>
       {% else %}<span class="faint">—</span>{% endif %}
     </td>
