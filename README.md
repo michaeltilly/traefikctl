@@ -85,7 +85,50 @@ The compose file enforces the security guardrails:
 - Config via environment variables (`TRAEFIKCTL_DYNAMIC_DIR`,
   `TRAEFIKCTL_DOMAIN_SUFFIX`, `TRAEFIKCTL_INGRESS_IP`,
   `TRAEFIKCTL_CERT_RESOLVER`, `TRAEFIKCTL_ENTRYPOINT`,
-  `TRAEFIKCTL_DNS_SERVER`) — TillyNet values are the defaults.
+  `TRAEFIKCTL_DNS_SERVER`, `TRAEFIKCTL_WILDCARD_COVERS_INGRESS`,
+  `TRAEFIKCTL_INSTANCE_NAME`) — TillyNet ingress01 values are the defaults.
+
+### Ingress modes
+
+One codebase serves both TillyNet ingresses; the difference is how the
+zone wildcard relates to the instance, controlled by
+`TRAEFIKCTL_WILDCARD_COVERS_INGRESS`:
+
+- **Wildcard mode** (`true`, the default — ingress01, 10.10.30.4): the zone
+  wildcard `*.shire.tillynet.com` points at this ingress, so a name with
+  **no** specific record is covered and any specific record is an override.
+- **Explicit mode** (`false` — ingress02, 10.10.10.4, the management
+  ingress): the wildcard points at the *other* ingress, so every published
+  name **requires** a specific A record → this ingress IP. Pre-flight
+  verdicts invert accordingly: no record now **blocks** with guidance to
+  create `NAME → <ingress IP>` in Technitium (the tool never creates
+  records); an explicit record → this ingress is the required pass state;
+  a record pointing elsewhere blocks, with the message distinguishing
+  "points at the other ingress (wildcard target)" from "points at a
+  device". The guided delete flow and its denylist are identical in both
+  modes, and API-unavailable still degrades to the resolution-only check.
+  The `/dns` panel additionally classifies records pointing at the wildcard
+  target as `other-ingress` and lists published services that are missing
+  their required record.
+
+`TRAEFIKCTL_INSTANCE_NAME` sets the header identity so two instances are
+unmistakable in adjacent tabs.
+
+Per-ingress environment, the two real deployments:
+
+```yaml
+# ingress01 (service ingress) — all defaults; shown explicit for clarity
+TRAEFIKCTL_INGRESS_IP: 10.10.30.4
+TRAEFIKCTL_DNS_SERVER: 10.10.30.30
+TRAEFIKCTL_WILDCARD_COVERS_INGRESS: "true"
+TRAEFIKCTL_INSTANCE_NAME: ingress01
+
+# ingress02 (management ingress)
+TRAEFIKCTL_INGRESS_IP: 10.10.10.4
+TRAEFIKCTL_DNS_SERVER: 10.10.30.30
+TRAEFIKCTL_WILDCARD_COVERS_INGRESS: "false"
+TRAEFIKCTL_INSTANCE_NAME: ingress02
+```
 
 The project currently lives at `/home/tillyadmin/traefikctl` (creating
 `/opt/traefikctl` needs a one-time sudo). To move it to the planned location:

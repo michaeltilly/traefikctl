@@ -130,6 +130,13 @@ def _zone_verdict_check(verdict: ZoneVerdict) -> CheckResult | None:
         return CheckResult(True, "ok", "Technitium zone: " + verdict.detail)
     if verdict.kind == ZoneKind.INGRESS_ALIAS:
         return CheckResult(True, "ok", "Technitium zone: " + verdict.detail)
+    if verdict.kind == ZoneKind.MISSING_RECORD:
+        return CheckResult(
+            False,
+            "block",
+            "Technitium zone: no A record for this name",
+            verdict.detail,
+        )
     conflicts = "; ".join(r.label for r in verdict.records)
     return CheckResult(
         False,
@@ -279,7 +286,8 @@ def delete_zone_record(
 @dataclass
 class ZonePanelRow:
     record: ZoneRecord
-    category: str  # wildcard | direct-access | ingress-aliased | disabled | infra
+    # wildcard | direct-access | ingress-aliased | other-ingress | disabled | infra
+    category: str
     shadows: str = ""  # name of a published service this record shadows
 
 
@@ -290,6 +298,9 @@ class ZonePanel:
     wildcard_ok: bool = False
     wildcard_detail: str = ""
     error: str = ""
+    # Explicit mode only: published services whose name has no enabled
+    # A record -> this ingress, i.e. wildcard-covered by the other ingress.
+    missing_published: list[str] = field(default_factory=list)
 
 
 def zone_panel(settings: Settings) -> ZonePanel:
@@ -312,26 +323,50 @@ def zone_panel(settings: Settings) -> ZonePanel:
     wildcard = [
         r for r in records if r.name.lower() == wildcard_name and r.type == "A"
     ]
+    wildcard_target = ""
     if not wildcard:
         panel.wildcard_ok = False
-        panel.wildcard_detail = (
-            f"NO wildcard A record found for {wildcard_name} — published "
-            "services will not resolve. This must be fixed in Technitium."
-        )
+        if settings.wildcard_covers_ingress:
+            panel.wildcard_detail = (
+                f"NO wildcard A record found for {wildcard_name} — published "
+                "services will not resolve. This must be fixed in Technitium."
+            )
+        else:
+            panel.wildcard_detail = (
+                f"NO wildcard A record found for {wildcard_name} — this "
+                "ingress does not depend on it, but the service ingress does. "
+                "Check Technitium."
+            )
     else:
         w = wildcard[0]
+        wildcard_target = w.rdata.get("ipAddress", "")
         if w.disabled:
             panel.wildcard_ok = False
             panel.wildcard_detail = f"wildcard exists but is DISABLED ({w.label})"
-        elif w.rdata.get("ipAddress") != settings.ingress_ip:
-            panel.wildcard_ok = False
-            panel.wildcard_detail = (
-                f"wildcard points at {w.value}, not the ingress "
-                f"({settings.ingress_ip}) — routing architecture is broken"
-            )
+        elif settings.wildcard_covers_ingress:
+            if wildcard_target != settings.ingress_ip:
+                panel.wildcard_ok = False
+                panel.wildcard_detail = (
+                    f"wildcard points at {w.value}, not the ingress "
+                    f"({settings.ingress_ip}) — routing architecture is broken"
+                )
+            else:
+                panel.wildcard_ok = True
+                panel.wildcard_detail = f"{wildcard_name} → {settings.ingress_ip}"
         else:
-            panel.wildcard_ok = True
-            panel.wildcard_detail = f"{wildcard_name} → {settings.ingress_ip}"
+            if wildcard_target == settings.ingress_ip:
+                panel.wildcard_ok = False
+                panel.wildcard_detail = (
+                    f"wildcard points at THIS ingress ({settings.ingress_ip}) — "
+                    "on the management ingress it must point at the service "
+                    "ingress; routing architecture is broken"
+                )
+            else:
+                panel.wildcard_ok = True
+                panel.wildcard_detail = (
+                    f"{wildcard_name} → {w.value} (other ingress) — names "
+                    "without a specific record land there, not here"
+                )
 
     for r in sorted(records, key=lambda r: (r.name, r.type)):
         name = r.name.lower()
@@ -343,12 +378,31 @@ def zone_panel(settings: Settings) -> ZonePanel:
             category = "disabled"
         elif r.type == "A" and r.rdata.get("ipAddress") == settings.ingress_ip:
             category = "ingress-aliased"
+        elif (
+            not settings.wildcard_covers_ingress
+            and r.type == "A"
+            and wildcard_target
+            and r.rdata.get("ipAddress") == wildcard_target
+        ):
+            category = "other-ingress"
         else:
             category = "direct-access"
         shadows = ""
-        if category in ("direct-access", "disabled") and name in published:
+        if category in ("direct-access", "disabled", "other-ingress") and name in published:
             shadows = published[name]
         panel.rows.append(ZonePanelRow(record=r, category=category, shadows=shadows))
+
+    if not settings.wildcard_covers_ingress:
+        aliased = {
+            r.name.lower()
+            for r in records
+            if r.type == "A"
+            and not r.disabled
+            and r.rdata.get("ipAddress") == settings.ingress_ip
+        }
+        panel.missing_published = sorted(
+            svc for host, svc in published.items() if host.lower() not in aliased
+        )
     return panel
 
 

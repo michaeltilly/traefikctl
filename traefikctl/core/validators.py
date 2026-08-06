@@ -40,12 +40,23 @@ def dns_check(host: str, settings: Settings) -> CheckResult:
         answers = resolver.resolve(host, "A")
         addrs = sorted(rr.address for rr in answers)
     except dns.resolver.NXDOMAIN:
+        if settings.wildcard_covers_ingress:
+            detail = (
+                "Expected the wildcard *.{suffix} record to answer. Check the "
+                "Technitium zone.".format(suffix=settings.domain_suffix)
+            )
+        else:
+            detail = (
+                f"On this ingress every published name needs a specific A "
+                f"record. Create {host} → {settings.ingress_ip} in the "
+                f"Technitium zone {settings.domain_suffix!r} "
+                f"(http://{settings.dns_server}:5380), then retry."
+            )
         return CheckResult(
             False,
             "block",
             f"{host} does not resolve at {settings.dns_server}",
-            "Expected the wildcard *.{suffix} record to answer. Check the "
-            "Technitium zone.".format(suffix=settings.domain_suffix),
+            detail,
         )
     except (dns.exception.DNSException, OSError) as e:
         return CheckResult(
@@ -56,15 +67,28 @@ def dns_check(host: str, settings: Settings) -> CheckResult:
         )
     if addrs == [settings.ingress_ip]:
         return CheckResult(True, "ok", f"{host} → {settings.ingress_ip} (ingress)")
+    if settings.wildcard_covers_ingress:
+        detail = (
+            "A specific A record in Technitium overrides the wildcard and "
+            "traffic will BYPASS Traefik. Fix: delete that A record for "
+            f"{host!r} in the Technitium zone {settings.domain_suffix!r} "
+            f"(http://{settings.dns_server}:5380), then retry."
+        )
+    else:
+        detail = (
+            "On this ingress the wildcard points at the other ingress, so a "
+            f"specific A record {host} → {settings.ingress_ip} is required. "
+            "If the answer above is the other ingress, the wildcard is "
+            "carrying the name — create the record; if it is a device, "
+            "delete that record first. Technitium zone "
+            f"{settings.domain_suffix!r} (http://{settings.dns_server}:5380)."
+        )
     return CheckResult(
         False,
         "block",
         f"{host} resolves to {', '.join(addrs)} — NOT the ingress "
         f"({settings.ingress_ip})",
-        "A specific A record in Technitium overrides the wildcard and traffic "
-        "will BYPASS Traefik. Fix: delete that A record for "
-        f"{host!r} in the Technitium zone {settings.domain_suffix!r} "
-        f"(http://{settings.dns_server}:5380), then retry.",
+        detail,
     )
 
 
@@ -130,7 +154,7 @@ def https_check(host: str, settings: Settings, timeout: float = 6.0) -> HttpsRes
         return HttpsResult(
             False,
             f"HTTPS probe to {settings.ingress_ip}:443 (SNI {host}) failed: {e}",
-            hints=_failure_hints(),
+            hints=_failure_hints(settings),
         )
     ok = status is not None and status < 500
     result = HttpsResult(
@@ -143,18 +167,28 @@ def https_check(host: str, settings: Settings, timeout: float = 6.0) -> HttpsRes
         cert_subject=subject,
     )
     if not ok:
-        result.hints = _failure_hints()
+        result.hints = _failure_hints(settings)
     return result
 
 
-def _failure_hints() -> list[str]:
+def _failure_hints(settings: Settings) -> list[str]:
+    if settings.wildcard_covers_ingress:
+        dns_hint = (
+            "A specific Technitium A record may override the wildcard and "
+            "bypass Traefik — check DNS for the name."
+        )
+    else:
+        dns_hint = (
+            "The name may lack its required A record → "
+            f"{settings.ingress_ip}, or a record may point elsewhere — "
+            "check DNS for the name."
+        )
     return [
-        "A specific Technitium A record may override the wildcard and bypass "
-        "Traefik — check DNS for the name.",
+        dns_hint,
         "The backend may be down — Traefik answers 502/504 when it can't "
         "reach the service.",
         "Traefik may have rejected the YAML — check `docker logs traefik` "
-        "on ingress01.",
+        f"on {settings.instance_name}.",
     ]
 
 

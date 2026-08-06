@@ -188,6 +188,11 @@ def dns():
         raise typer.Exit(1)
     mark = OK if panel.wildcard_ok else BAD
     typer.echo(f"{mark} wildcard: {panel.wildcard_detail}")
+    for svc in panel.missing_published:
+        typer.echo(
+            f"{BAD} published service {svc!r} has no A record → "
+            f"{settings.ingress_ip} — unreachable on this ingress"
+        )
     rows = [("RECORD", "TYPE", "VALUE", "CATEGORY", "NOTES")] + [
         (
             row.record.name,

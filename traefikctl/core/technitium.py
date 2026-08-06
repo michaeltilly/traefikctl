@@ -68,7 +68,8 @@ class ZoneRecord:
 class ZoneKind(Enum):
     DISABLED_INTEGRATION = "disabled-integration"  # no token configured
     UNAVAILABLE = "unavailable"  # API down/unreachable — degrade gracefully
-    NO_RECORD = "no-record"  # wildcard will carry the name
+    NO_RECORD = "no-record"  # wildcard will carry the name (wildcard mode)
+    MISSING_RECORD = "missing-record"  # explicit mode: record required, absent
     INGRESS_ALIAS = "ingress-alias"  # explicit record already → ingress
     CONFLICT = "conflict"  # enabled record points elsewhere
     DISABLED_CONFLICT = "disabled-conflict"  # the k2pve case
@@ -82,7 +83,11 @@ class ZoneVerdict:
 
     @property
     def blocks(self) -> bool:
-        return self.kind in (ZoneKind.CONFLICT, ZoneKind.DISABLED_CONFLICT)
+        return self.kind in (
+            ZoneKind.CONFLICT,
+            ZoneKind.DISABLED_CONFLICT,
+            ZoneKind.MISSING_RECORD,
+        )
 
 
 class TechnitiumClient:
@@ -147,6 +152,18 @@ class TechnitiumClient:
             )
             for r in resp.get("records", [])
         ]
+
+    def get_wildcard_target(self) -> str | None:
+        """IP the zone wildcard points at, or None if absent/disabled/unknown.
+        Used in explicit mode to tell 'points at the other ingress' apart
+        from 'points at a device' in conflict messaging."""
+        try:
+            for r in self.get_records(f"*.{self.settings.technitium_zone}"):
+                if r.type == "A" and not r.disabled:
+                    return r.rdata.get("ipAddress")
+        except (httpx.HTTPError, TechnitiumError, ValueError):
+            return None
+        return None
 
     def get_negative_ttl(self) -> int | None:
         """The zone's negative-caching TTL (SOA minimum), for honest
@@ -222,6 +239,20 @@ def classify(fqdn: str, settings: Settings) -> ZoneVerdict:
         and r.rdata.get("ipAddress") == settings.ingress_ip
     ]
 
+    if settings.wildcard_covers_ingress:
+        return _classify_wildcard_mode(disabled, enabled_elsewhere, ingress_alias)
+    return _classify_explicit_mode(
+        fqdn, client, settings, disabled, enabled_elsewhere, ingress_alias
+    )
+
+
+def _classify_wildcard_mode(
+    disabled: list[ZoneRecord],
+    enabled_elsewhere: list[ZoneRecord],
+    ingress_alias: list[ZoneRecord],
+) -> ZoneVerdict:
+    """ingress01 reality: the wildcard points at this ingress, so no record
+    means covered, and any specific record is an override."""
     if disabled:
         return ZoneVerdict(
             ZoneKind.DISABLED_CONFLICT,
@@ -250,4 +281,64 @@ def classify(fqdn: str, settings: Settings) -> ZoneVerdict:
     return ZoneVerdict(
         ZoneKind.NO_RECORD,
         detail="No specific record — the wildcard covers this name.",
+    )
+
+
+def _classify_explicit_mode(
+    fqdn: str,
+    client: TechnitiumClient,
+    settings: Settings,
+    disabled: list[ZoneRecord],
+    enabled_elsewhere: list[ZoneRecord],
+    ingress_alias: list[ZoneRecord],
+) -> ZoneVerdict:
+    """ingress02 reality: the wildcard points at the OTHER ingress, so a
+    specific A record -> this ingress IP is REQUIRED, and its absence means
+    the published route would be unreachable."""
+    if disabled:
+        return ZoneVerdict(
+            ZoneKind.DISABLED_CONFLICT,
+            records=disabled + enabled_elsewhere,
+            detail=(
+                "A disabled record still occupies the name in the zone and "
+                "lookups return NXDOMAIN. Delete it, then create an enabled "
+                f"A record {fqdn} → {settings.ingress_ip} in Technitium."
+            ),
+        )
+    if enabled_elsewhere:
+        wildcard_target = client.get_wildcard_target()
+        conflict_ips = {
+            r.rdata.get("ipAddress") for r in enabled_elsewhere if r.type == "A"
+        }
+        if wildcard_target and conflict_ips == {wildcard_target}:
+            detail = (
+                f"The record points at the other ingress ({wildcard_target}) — "
+                "likely a wildcard duplicate or a wrong-ingress publish. This "
+                f"ingress needs {fqdn} → {settings.ingress_ip}: delete the "
+                "record, then create the correct one in Technitium."
+            )
+        else:
+            detail = (
+                "The record points at a device, so traffic bypasses this "
+                f"ingress. To publish here it must be {fqdn} → "
+                f"{settings.ingress_ip}: delete the record, then create the "
+                "correct one in Technitium."
+            )
+        return ZoneVerdict(
+            ZoneKind.CONFLICT, records=enabled_elsewhere, detail=detail
+        )
+    if ingress_alias:
+        return ZoneVerdict(
+            ZoneKind.INGRESS_ALIAS,
+            detail="Explicit A record points at this ingress — the required "
+            "state on this ingress.",
+        )
+    return ZoneVerdict(
+        ZoneKind.MISSING_RECORD,
+        detail=(
+            "No record exists, and on this ingress the wildcard does NOT "
+            "cover published names — the route would be unreachable. Create "
+            f"an A record {fqdn} → {settings.ingress_ip} in Technitium first "
+            "(traefikctl never creates records)."
+        ),
     )
