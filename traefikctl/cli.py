@@ -229,6 +229,31 @@ def dns():
         typer.echo("  ".join(c.ljust(widths[i]) for i, c in enumerate(r)))
 
 
+@cli.command()
+def certs(
+    json_out: bool = typer.Option(False, "--json", help="Machine-readable output"),
+):
+    """Certificate expiry + renewal health. Exit 0 ok, 1 warn, 2 critical."""
+    import json
+
+    from .core import certs as certmod
+
+    settings = get_settings()
+    report = certmod.build_report(settings)
+    if json_out:
+        typer.echo(json.dumps(report.to_dict(), indent=2))
+    else:
+        mark = {"ok": OK, "warn": WARN, "crit": BAD}
+        typer.secho(f"TLS {report.status.upper()} — {settings.instance_name}", bold=True)
+        for title, findings in (("Expiry", report.expiry), ("Renewal health", report.renewal)):
+            typer.echo(f"{title}:")
+            for f in findings:
+                typer.echo(f"  {mark[f.level]} {f.summary}")
+                if f.level != "ok" and f.detail:
+                    typer.echo(f"      {f.detail}")
+    raise typer.Exit({"ok": 0, "warn": 1, "crit": 2}[report.status])
+
+
 def main() -> None:
     cli()
 

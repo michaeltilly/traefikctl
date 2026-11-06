@@ -138,6 +138,40 @@ The project currently lives at `/home/tillyadmin/traefikctl` (creating
 sudo mkdir -p /opt/traefikctl && sudo chown tillyadmin:tillyadmin /opt/traefikctl && cp -r /home/tillyadmin/traefikctl/. /opt/traefikctl/ && cd /opt/traefikctl && docker compose up -d
 ```
 
+## Certificate monitor
+
+The **Certificates** page (`/certs`), a `TLS OK/WARN/CRIT` pill in the
+header, and a banner on every page when something is wrong answer two
+questions continuously (background re-check every 15 minutes):
+
+**1. Is a certificate about to expire?** For every published host (plus
+`TRAEFIKCTL_CERT_CHECK_HOSTS`), traefikctl connects to the ingress with
+SNI and reads the certificate actually served — issuer-agnostic, exactly
+what clients see. WARN under `TRAEFIKCTL_CERT_WARN_DAYS` (21), CRIT under
+`TRAEFIKCTL_CERT_CRIT_DAYS` (7); Traefik's self-signed default cert or an
+unreadable cert is CRIT.
+
+**2. Is automatic renewal working?** Renewal fails silently — Let's
+Encrypt no longer emails expiry warnings — so traefikctl checks for it:
+
+- **Renewal overdue:** a cert still in place 2+ days after its renewal
+  window opened (`TRAEFIKCTL_CERT_RENEW_WINDOW_DAYS`, 30) means renewal is
+  failing. Fires ~19 days before the 21-day expiry warning would.
+- **Port-53 interception canary:** a DNS query to `192.0.2.53` (TEST-NET,
+  no server exists) must time out. An answer means a gateway feature is
+  hijacking DNS (the 2026-11 outage: UCG ad blocking), which blinds DNS-01.
+- **Challenge zone:** resolves `_acme-challenge.<suffix>` through the
+  public resolvers the way lego does; it must land in
+  `TRAEFIKCTL_ACME_ZONE` (default: suffix minus its first label,
+  `tillynet.com`). Landing in the internal zone is the exact signature of
+  the 2026-11 failure.
+- **ACME directory reachable** (`TRAEFIKCTL_ACME_DIRECTORY`).
+
+These are read-only network probes: no new mounts, no Docker socket, no
+`acme.json`, no ACME credentials. `traefikctl certs [--json]` runs the same
+checks with exit code 0/1/2 (for a systemd timer), and `/api/certs` serves
+the cached report as JSON. Disable with `TRAEFIKCTL_CERT_MONITOR=false`.
+
 ## Technitium integration (optional)
 
 With an API token configured, pre-flight sees the authoritative zone as it

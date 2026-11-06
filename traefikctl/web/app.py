@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..config import get_settings
 from ..core import operations, parser
+from ..core.certs import CertMonitor
 from ..core.generator import ServiceSpec
 
 logging.basicConfig(
@@ -40,6 +41,12 @@ app.mount(
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["now"] = lambda: datetime.now(timezone.utc).strftime(
     "%Y-%m-%d %H:%M:%S UTC"
+)
+
+cert_monitor = CertMonitor(settings)
+# Every page reads the latest cached report (never probes inline).
+templates.env.globals["cert_report"] = lambda: (
+    cert_monitor.report if settings.cert_monitor else None
 )
 
 
@@ -63,6 +70,8 @@ def verify_mount() -> None:
         "traefikctl up — dynamic dir %s, domain %s, ingress %s (uid=%s)",
         d, settings.domain_suffix, settings.ingress_ip, os.getuid(),
     )
+    if settings.cert_monitor:
+        cert_monitor.start()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -350,6 +359,32 @@ def dns_create(
             else None,
         },
     )
+
+
+@app.get("/certs", response_class=HTMLResponse)
+def certs_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "certs.html",
+        {"settings": settings, "report": cert_monitor.report,
+         "enabled": settings.cert_monitor},
+    )
+
+
+@app.post("/certs/refresh")
+def certs_refresh():
+    if settings.cert_monitor:
+        cert_monitor.refresh()
+    return RedirectResponse("/certs", status_code=303)
+
+
+@app.get("/api/certs")
+def certs_api():
+    """Machine-readable status for timers / future alerting."""
+    if not settings.cert_monitor:
+        return {"enabled": False}
+    report = cert_monitor.report or cert_monitor.refresh()
+    return {"enabled": True, **report.to_dict()}
 
 
 @app.get("/health")

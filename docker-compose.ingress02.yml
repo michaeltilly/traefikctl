@@ -28,6 +28,9 @@ services:
       # so every published name needs a specific A record -> 10.10.10.4.
       TRAEFIKCTL_WILDCARD_COVERS_INGRESS: "false"
       TRAEFIKCTL_INSTANCE_NAME: ingress02
+      # Certificate monitor: also probe the label-defined routers (the
+      # Traefik dashboard and this UI), which aren't in the dynamic dir.
+      TRAEFIKCTL_CERT_CHECK_HOSTS: ingress02.shire.tillynet.com,ingress02ctl.shire.tillynet.com
     # SECURITY: no ports! Admin surface — reachable ONLY through Traefik,
     # behind the auth middleware below.
     labels:

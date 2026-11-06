@@ -18,6 +18,11 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() not in _FALSY
 
 
+def _env_list(name: str, default: str) -> list[str]:
+    raw = os.environ.get(name, default)
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
 @dataclass
 class Settings:
     dynamic_dir: Path = field(
@@ -65,6 +70,43 @@ class Settings:
     # are unmistakable in adjacent browser tabs.
     instance_name: str = field(
         default_factory=lambda: os.environ.get("TRAEFIKCTL_INSTANCE_NAME", "ingress01")
+    )
+    # Certificate monitor (expiry + renewal health). Read-only probes.
+    cert_monitor: bool = field(
+        default_factory=lambda: _env_bool("TRAEFIKCTL_CERT_MONITOR", True)
+    )
+    # Extra hostnames to probe beyond the dynamic-dir routers — e.g. the
+    # dashboard and traefikctl itself, which are Docker-label routers.
+    cert_check_hosts: list[str] = field(
+        default_factory=lambda: _env_list("TRAEFIKCTL_CERT_CHECK_HOSTS", "")
+    )
+    cert_warn_days: int = field(
+        default_factory=lambda: int(os.environ.get("TRAEFIKCTL_CERT_WARN_DAYS", "21"))
+    )
+    cert_crit_days: int = field(
+        default_factory=lambda: int(os.environ.get("TRAEFIKCTL_CERT_CRIT_DAYS", "7"))
+    )
+    # Traefik renews this many days before expiry (30 for 90-day certs).
+    cert_renew_window_days: int = field(
+        default_factory=lambda: int(
+            os.environ.get("TRAEFIKCTL_CERT_RENEW_WINDOW_DAYS", "30")
+        )
+    )
+    # The public DNS zone the DNS-01 provider writes challenge records into.
+    # Default: the domain suffix minus its first label (shire.tillynet.com
+    # -> tillynet.com).
+    acme_zone: str = field(
+        default_factory=lambda: os.environ.get("TRAEFIKCTL_ACME_ZONE")
+        or os.environ.get("TRAEFIKCTL_DOMAIN_SUFFIX", "shire.tillynet.com").split(".", 1)[-1]
+    )
+    public_resolvers: list[str] = field(
+        default_factory=lambda: _env_list("TRAEFIKCTL_PUBLIC_RESOLVERS", "1.1.1.1,8.8.8.8")
+    )
+    acme_directory_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "TRAEFIKCTL_ACME_DIRECTORY",
+            "https://acme-v02.api.letsencrypt.org/directory",
+        )
     )
     # Technitium integration — absence of the token cleanly disables it.
     technitium_url: str = field(

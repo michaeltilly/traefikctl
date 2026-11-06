@@ -21,7 +21,13 @@ try {
     <a href="/" {% if path == '/' or path.startswith('/service') %}aria-current="page"{% endif %}>Services</a>
     <a href="/add" {% if path.startswith('/add') %}aria-current="page"{% endif %}>Add service</a>
     <a href="/dns" {% if path.startswith('/dns') %}aria-current="page"{% endif %}>DNS</a>
+    <a href="/certs" {% if path.startswith('/certs') %}aria-current="page"{% endif %}>Certificates</a>
   </nav>
+  {% set cr = cert_report() %}
+  {% if settings.cert_monitor %}
+  <a href="/certs" class="pill {{ {'ok':'pill-ok','warn':'pill-warn','crit':'pill-bad'}[cr.status] if cr else 'pill-off' }}" style="text-decoration:none"
+     title="Certificate expiry and renewal health">TLS {{ cr.status|upper if cr else 'checking…' }}</a>
+  {% endif %}
   <div class="envid">
     <span>{{ settings.instance_name }}</span>
     {% if settings.wildcard_covers_ingress %}
@@ -32,7 +38,16 @@ try {
     <button type="button" id="theme-toggle" class="theme-btn">Light</button>
   </div>
 </header>
-<main>{% block content %}{% endblock %}</main>
+<main>
+{% if cr and cr.status != 'ok' and not path.startswith('/certs') %}
+<div class="notice {{ 'notice-bad' if cr.status == 'crit' else 'notice-warn' }}" role="alert">
+  <span class="notice-glyph">{{ '✕' if cr.status == 'crit' else '!' }}</span>
+  <div><strong>Certificate {{ 'CRITICAL' if cr.status == 'crit' else 'warning' }}:</strong>
+    {{ cr.problems[0].summary }}{% if cr.problems|length > 1 %} (+{{ cr.problems|length - 1 }} more){% endif %}
+    — <a href="/certs">details</a></div>
+</div>
+{% endif %}
+{% block content %}{% endblock %}</main>
 <script src="/static/app.js"></script>
 </body>
 </html>

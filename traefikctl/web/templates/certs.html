@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}certificates{% endblock %}
+{% block content %}
+{% set glyph = {'ok': '✓', 'warn': '!', 'crit': '✕'} %}
+{% set state = {'ok': 'ok', 'warn': 'warn', 'crit': 'block'} %}
+<div class="pagehead">
+  <h1>Certificates</h1>
+  <span class="muted">what {{ settings.instance_name }} ({{ settings.ingress_ip }}) is serving, and whether renewal can work</span>
+  <span class="spacer"></span>
+  {% if report %}<span class="ledger-time">checked {{ report.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>{% endif %}
+  {% if enabled %}
+  <form method="post" action="/certs/refresh" style="margin:0 0 0 .6rem">
+    <button type="submit">Re-check now</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not enabled %}
+<div class="notice notice-warn"><span class="notice-glyph">!</span>
+  <div>The certificate monitor is disabled (<code>TRAEFIKCTL_CERT_MONITOR=false</code>).</div></div>
+{% elif not report %}
+<div class="notice notice-warn"><span class="notice-glyph">…</span>
+  <div>First check is still running — reload in a few seconds, or press <strong>Re-check now</strong>.</div></div>
+{% else %}
+
+{% if report.status == 'ok' %}
+<div class="notice notice-ok" role="status"><span class="notice-glyph">✓</span>
+  <div><strong>All certificate checks pass.</strong> Expiry is outside the warning window and nothing is blocking automatic renewal.</div></div>
+{% else %}
+<div class="notice {{ 'notice-bad' if report.status == 'crit' else 'notice-warn' }}" role="alert">
+  <span class="notice-glyph">{{ glyph[report.status] }}</span>
+  <div><strong>{{ report.problems|length }} problem{{ 's' if report.problems|length != 1 }}</strong> — see the findings below.</div></div>
+{% endif %}
+
+<div class="ledger" data-worst="{{ state[report.expiry_status] }}">
+  <div class="ledger-head">
+    <span class="ledger-kind">Expiry</span>
+    <span class="ledger-target">warn &lt; {{ settings.cert_warn_days }} days · critical &lt; {{ settings.cert_crit_days }} days</span>
+  </div>
+  {% for f in report.expiry %}
+  <div class="ledger-row" data-state="{{ state[f.level] }}">
+    <div class="ledger-glyph">{{ glyph[f.level] }}</div>
+    <div><div class="ledger-finding">{{ f.summary }}</div>
+      {% if f.detail %}<div class="ledger-detail">{{ f.detail }}</div>{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="ledger" data-worst="{{ state[report.renewal_status] }}">
+  <div class="ledger-head">
+    <span class="ledger-kind">Renewal health</span>
+    <span class="ledger-target">renews {{ settings.cert_renew_window_days }} days before expiry · DNS-01 via public zone <code>{{ settings.acme_zone }}</code></span>
+  </div>
+  {% for f in report.renewal %}
+  <div class="ledger-row" data-state="{{ state[f.level] }}">
+    <div class="ledger-glyph">{{ glyph[f.level] }}</div>
+    <div><div class="ledger-finding">{{ f.summary }}</div>
+      {% if f.detail %}<div class="ledger-detail">{{ f.detail }}</div>{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">Served certificates</h3>
+<div class="tablewrap">
+<table>
+  <tr><th>hosts</th><th>issuer</th><th>names covered</th><th>valid from</th><th>expires</th><th>days left</th></tr>
+  {% for c in report.certs %}
+  <tr>
+    <td>{% for h in c.hosts %}<code>{{ h }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+    {% if c.error %}
+    <td colspan="5"><span style="color:var(--bad)">{{ c.error }}</span></td>
+    {% else %}
+    <td>{{ c.issuer }}</td>
+    <td>{% for s in c.sans %}<code>{{ s }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+    <td><code>{{ c.not_before.strftime('%Y-%m-%d') if c.not_before else '—' }}</code></td>
+    <td><code>{{ c.not_after.strftime('%Y-%m-%d %H:%M') if c.not_after else '—' }}</code></td>
+    {% set d = c.days_remaining(report.generated_at) %}
+    <td>{% if d is none %}—{% else %}<span class="pill {{ 'pill-bad' if d < settings.cert_crit_days else ('pill-warn' if d < settings.cert_warn_days else 'pill-ok') }}">{{ '%.0f'|format(d) }}</span>{% endif %}</td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+<p class="help" style="margin-top:.7rem">Re-checked automatically every 15 minutes. Probes connect to the ingress directly with SNI, so they show exactly what clients receive. Machine-readable: <a href="/api/certs"><code>/api/certs</code></a>.</p>
+</div>
+{% endif %}
+{% endblock %}
