@@ -86,6 +86,15 @@ class Settings:
     cert_crit_days: int = field(
         default_factory=lambda: int(os.environ.get("TRAEFIKCTL_CERT_CRIT_DAYS", "7"))
     )
+    # Organization expected in the served certificate's issuer. Anything
+    # else (e.g. a DigiCert cert) means something other than this Traefik's
+    # ACME pipeline is answering. Empty disables the check. A Let's Encrypt
+    # STAGING issuer is always critical.
+    cert_expected_issuer: str = field(
+        default_factory=lambda: os.environ.get(
+            "TRAEFIKCTL_CERT_EXPECTED_ISSUER", "Let's Encrypt"
+        )
+    )
     # Traefik renews this many days before expiry (30 for 90-day certs).
     cert_renew_window_days: int = field(
         default_factory=lambda: int(

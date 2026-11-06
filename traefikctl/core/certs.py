@@ -295,6 +295,38 @@ def evaluate_expiry(certs: list[ServedCert], settings: Settings, now: datetime) 
     return findings
 
 
+def evaluate_issuer(certs: list[ServedCert], settings: Settings) -> list[Finding]:
+    """Flag certificates whose issuer isn't the expected ACME CA. A foreign
+    issuer (e.g. DigiCert) means something other than this Traefik's
+    pipeline is answering on 443; a STAGING issuer means a test cert leaked
+    into production. Unreadable/default certs are already reported by
+    evaluate_expiry and are skipped here."""
+    expected = settings.cert_expected_issuer.strip()
+    findings = []
+    checked = 0
+    for c in certs:
+        if c.error or c.is_default:
+            continue
+        checked += 1
+        hosts = ", ".join(c.hosts)
+        if "STAGING" in c.issuer.upper():
+            findings.append(Finding(
+                "crit", f"{hosts}: serving a Let's Encrypt STAGING certificate",
+                f"Issuer: {c.issuer}. Staging certs are untrusted by browsers — "
+                "a staging caServer was likely left in the Traefik resolver."))
+        elif expected and expected.lower() not in c.issuer.lower():
+            findings.append(Finding(
+                "warn", f"{hosts}: unexpected issuer (expected {expected})",
+                f"Issuer: {c.issuer}. Something other than this ingress's ACME "
+                "pipeline may be answering on 443 for these names — check DNS "
+                "and what is listening before trusting the expiry date."))
+    if checked and not findings and expected:
+        findings.append(Finding(
+            "ok", f"issuer is {expected} on all {checked} served certificate"
+            f"{'s' if checked != 1 else ''}"))
+    return findings
+
+
 def evaluate_renewal(
     certs: list[ServedCert],
     interception: tuple[bool | None, str],
@@ -390,6 +422,7 @@ def build_report(settings: Settings, now: datetime | None = None) -> CertReport:
             "Nothing is published and TRAEFIKCTL_CERT_CHECK_HOSTS is empty."))
     else:
         report.expiry = evaluate_expiry(certs, settings, now)
+        report.expiry += evaluate_issuer(certs, settings)
     report.renewal = evaluate_renewal(
         certs,
         probe_interception(settings),

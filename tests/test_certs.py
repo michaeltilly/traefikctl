@@ -323,3 +323,37 @@ def test_cli_exit_codes(settings, monkeypatch):
         monkeypatch.setattr(certs, "build_report", lambda s, r=rep: r)
         res = CliRunner().invoke(cli.cli, ["certs"])
         assert res.exit_code == code, res.output
+
+
+# ---- issuer ----
+
+def test_issuer_expected_le_is_ok(settings):
+    [f] = certs.evaluate_issuer([cert(80), cert(80, serial="BB")], settings)
+    assert f.level == "ok" and "all 2 served certificates" in f.summary
+
+
+def test_issuer_foreign_ca_warns(settings):
+    digicert = "countryName=US, organizationName=DigiCert Inc, commonName=DigiCert Global G2 TLS RSA SHA256 2020 CA1"
+    fs = certs.evaluate_issuer([cert(300, issuer=digicert)], settings)
+    assert levels(fs) == ["warn"]
+    assert "unexpected issuer" in fs[0].summary and "DigiCert" in fs[0].detail
+
+
+def test_issuer_staging_is_critical(settings):
+    staging = "countryName=US, organizationName=(STAGING) Let's Encrypt, commonName=(STAGING) Baloney Bulgur YE2"
+    fs = certs.evaluate_issuer([cert(80, issuer=staging)], settings)
+    assert levels(fs) == ["crit"] and "STAGING" in fs[0].summary
+
+
+def test_issuer_skips_unreadable_and_default(settings):
+    bad = ServedCert(hosts=["x.shire.tillynet.com"], error="timed out")
+    default = cert(300, issuer="commonName=TRAEFIK DEFAULT CERT", subject="commonName=TRAEFIK DEFAULT CERT")
+    assert certs.evaluate_issuer([bad, default], settings) == []
+
+
+def test_issuer_check_disabled(settings):
+    settings.cert_expected_issuer = ""
+    assert certs.evaluate_issuer([cert(80, issuer="organizationName=Anyone")], settings) == []
+    # staging is still critical even with the issuer check disabled
+    staging = "organizationName=(STAGING) Let's Encrypt"
+    assert levels(certs.evaluate_issuer([cert(80, issuer=staging)], settings)) == ["crit"]

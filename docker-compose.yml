@@ -20,6 +20,9 @@ services:
       TRAEFIKCTL_DOMAIN_SUFFIX: shire.tillynet.com
       TRAEFIKCTL_INGRESS_IP: 10.10.30.4
       TRAEFIKCTL_CERT_RESOLVER: letsencrypt
+      # Cert monitor: also probe the Docker-label routers (dashboard + this UI),
+      # which don't live in the dynamic dir.
+      TRAEFIKCTL_CERT_CHECK_HOSTS: ingress01.shire.tillynet.com,ingress01ctl.shire.tillynet.com
       TRAEFIKCTL_ENTRYPOINT: websecure
       TRAEFIKCTL_DNS_SERVER: 10.10.30.30
     # SECURITY: no ports! Admin surface — reachable ONLY through Traefik,
